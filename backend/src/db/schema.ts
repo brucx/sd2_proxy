@@ -24,6 +24,8 @@ export const usageLogs = pgTable('usage_logs', {
   endpoint: varchar('endpoint', { length: 255 }).notNull(),
   taskId: varchar('task_id', { length: 255 }),
   completionTokens: integer('completion_tokens').default(0),
+  hasVideoInput: boolean('has_video_input').notNull().default(false),
+  costYuan: text('cost_yuan').notNull().default('0'),
   status: varchar('status', { length: 50 }).default('pending'), // 'pending', 'succeeded', 'failed'
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

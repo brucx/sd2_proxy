@@ -27,6 +27,26 @@ const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
 const UPSTREAM_URL = process.env.UPSTREAM_URL || 'http://118.196.64.1';
 const ARK_API_KEY = process.env.ARK_API_KEY || 'test-ark-key';
 
+// Upstream pricing (CNY per million tokens)
+const PRICE_WITH_VIDEO = parseFloat(process.env.PRICE_WITH_VIDEO || '28');
+const PRICE_WITHOUT_VIDEO = parseFloat(process.env.PRICE_WITHOUT_VIDEO || '46');
+
+// Detect if request body contains video input
+function detectVideoInput(body: any): boolean {
+  try {
+    const contents = body?.content || [];
+    return Array.isArray(contents) && contents.some((item: any) => item.type === 'video_url' || item.type === 'video');
+  } catch {
+    return false;
+  }
+}
+
+// Calculate cost in CNY
+function calculateCost(completionTokens: number, hasVideo: boolean): string {
+  const pricePerToken = (hasVideo ? PRICE_WITH_VIDEO : PRICE_WITHOUT_VIDEO) / 1_000_000;
+  return (completionTokens * pricePerToken).toFixed(6);
+}
+
 // -- Authentication Middleware for Panel --
 const authMiddleware = async (c: any, next: any) => {
   const token = c.req.header('Authorization')?.split(' ')[1];
@@ -389,12 +409,16 @@ app.post('/api/v1/doubao/create', proxyAuthMiddleware, async (c) => {
     const durationMs = Date.now() - startTime;
     const responseBody = JSON.stringify(data);
 
+    // Detect video input from original request body
+    const isVideoInput = detectVideoInput(JSON.parse(originalBody));
+
     if (upstreamRes.ok && data.id) {
       await db.insert(schema.usageLogs).values({
         userId: keyRecord.userId,
         keyId: keyRecord.id,
         endpoint: '/create',
         taskId: data.id,
+        hasVideoInput: isVideoInput,
         status: 'pending'
       });
     }
@@ -457,10 +481,17 @@ app.post('/api/v1/doubao/get_result', proxyAuthMiddleware, async (c) => {
       // Update usage log if status changed to succeeded or failed
       if (data.status === 'succeeded' || data.status === 'failed') {
         const completionTokens = data.usage?.completion_tokens || 0;
+
+        // Look up the existing log to get hasVideoInput for cost calculation
+        const existingLog = await db.select().from(schema.usageLogs).where(eq(schema.usageLogs.taskId, data.id)).limit(1);
+        const hasVideo = existingLog[0]?.hasVideoInput ?? false;
+        const cost = data.status === 'succeeded' ? calculateCost(completionTokens, hasVideo) : '0';
+
         await db.update(schema.usageLogs)
           .set({
             status: data.status,
             completionTokens: completionTokens,
+            costYuan: cost,
             updatedAt: new Date()
           })
           .where(eq(schema.usageLogs.taskId, data.id));
@@ -523,14 +554,16 @@ cron.schedule('*/5 * * * *', async () => {
         const data: any = await upstreamRes.json();
         if (['succeeded', 'failed', 'cancelled', 'expired'].includes(data.status)) {
           const completionTokens = data.usage?.completion_tokens || 0;
+          const cost = data.status === 'succeeded' ? calculateCost(completionTokens, log.hasVideoInput) : '0';
           await db.update(schema.usageLogs)
             .set({
               status: data.status,
               completionTokens: completionTokens,
+              costYuan: cost,
               updatedAt: new Date()
             })
             .where(eq(schema.usageLogs.id, log.id));
-          console.log(`Updated task ${log.taskId} status to ${data.status}`);
+          console.log(`Updated task ${log.taskId} status to ${data.status}, cost: ¥${cost}`);
         }
       }
     }

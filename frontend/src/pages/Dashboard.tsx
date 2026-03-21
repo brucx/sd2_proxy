@@ -392,19 +392,37 @@ function Dashboard() {
           </div>
 
           <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
-            <h2 className="text-xl font-bold mb-4">Global Usage Statistics (Tokens)</h2>
-            <p className="mb-4 font-medium text-lg">Total Completion Tokens: {usage.reduce((acc, curr) => acc + curr.completionTokens, 0)}</p>
+            <h2 className="text-xl font-bold mb-4">Global Usage Statistics</h2>
+            <div className="flex flex-wrap gap-4 mb-4">
+              <p className="font-medium text-lg text-green-700 bg-green-50 p-3 rounded-lg border border-green-200">Total Tokens: {usage.reduce((acc, curr) => acc + (curr.completionTokens || 0), 0)}</p>
+              <p className="font-medium text-lg text-blue-700 bg-blue-50 p-3 rounded-lg border border-blue-200">Total Cost: ¥{usage.reduce((acc, curr) => acc + parseFloat(curr.costYuan || '0'), 0).toFixed(4)}</p>
+            </div>
             {/* Desktop Table */}
+            <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-sm hidden md:table">
               <thead>
-                <tr className="border-b bg-gray-50"><th className="p-2">User ID</th><th className="p-2">Key ID</th><th className="p-2">Task ID</th><th className="p-2">Tokens</th><th className="p-2">Status</th></tr>
+                <tr className="border-b bg-gray-50"><th className="p-2">User ID</th><th className="p-2">Key ID</th><th className="p-2">Task ID</th><th className="p-2">Tokens</th><th className="p-2">输入类型</th><th className="p-2">单价(元/百万)</th><th className="p-2">费用(元)</th><th className="p-2">Status</th></tr>
               </thead>
               <tbody>
                 {usage.map(u => (
-                  <tr key={u.id} className="border-b"><td className="p-2">{u.userId}</td><td className="p-2">{u.keyId}</td><td className="p-2 font-mono text-xs">{u.taskId}</td><td className="p-2">{u.completionTokens}</td><td className="p-2">{u.status}</td></tr>
+                  <tr key={u.id} className="border-b">
+                    <td className="p-2">{u.userId}</td>
+                    <td className="p-2">{u.keyId}</td>
+                    <td className="p-2 font-mono text-xs">{u.taskId}</td>
+                    <td className="p-2">{u.completionTokens}</td>
+                    <td className="p-2">
+                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${u.hasVideoInput ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
+                        {u.hasVideoInput ? '含视频' : '纯文本'}
+                      </span>
+                    </td>
+                    <td className="p-2">{u.hasVideoInput ? '28' : '46'}</td>
+                    <td className="p-2 font-semibold text-orange-600">¥{parseFloat(u.costYuan || '0').toFixed(4)}</td>
+                    <td className="p-2">{u.status}</td>
+                  </tr>
                 ))}
               </tbody>
             </table>
+            </div>
             {/* Mobile Cards */}
             <div className="md:hidden grid gap-4">
               {usage.map(u => (
@@ -417,6 +435,12 @@ function Dashboard() {
                   <div className="flex justify-between items-center text-sm">
                     <span className="text-gray-600">Key ID: {u.keyId}</span>
                     <span className="font-semibold text-green-600">Tokens: {u.completionTokens}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm pt-1 border-t border-gray-200">
+                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${u.hasVideoInput ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
+                      {u.hasVideoInput ? '含视频' : '纯文本'} · 单价 {u.hasVideoInput ? '28' : '46'}
+                    </span>
+                    <span className="font-semibold text-orange-600">¥{parseFloat(u.costYuan || '0').toFixed(4)}</span>
                   </div>
                 </div>
               ))}
@@ -703,20 +727,40 @@ function Dashboard() {
 
           <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
             <h2 className="text-xl font-bold mb-4">Usage Statistics</h2>
-            <p className="mb-4 font-medium text-lg text-green-700 bg-green-50 p-3 rounded-lg border border-green-200 inline-block w-full sm:w-auto text-center sm:text-left">
-              Total Used Tokens: {usage.reduce((acc, curr) => acc + curr.completionTokens, 0)}
-            </p>
+            <div className="flex flex-wrap gap-4 mb-4">
+              <p className="font-medium text-lg text-green-700 bg-green-50 p-3 rounded-lg border border-green-200">
+                Total Tokens: {usage.reduce((acc, curr) => acc + (curr.completionTokens || 0), 0)}
+              </p>
+              <p className="font-medium text-lg text-blue-700 bg-blue-50 p-3 rounded-lg border border-blue-200">
+                Total Cost: ¥{usage.reduce((acc, curr) => acc + parseFloat(curr.costYuan || '0'), 0).toFixed(4)}
+              </p>
+            </div>
             {/* Desktop Table */}
+            <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-sm hidden md:table">
               <thead>
-                <tr className="border-b bg-gray-50"><th className="p-2">Endpoint</th><th className="p-2">Task ID</th><th className="p-2">Tokens</th><th className="p-2">Status</th><th className="p-2">Time</th></tr>
+                <tr className="border-b bg-gray-50"><th className="p-2">Endpoint</th><th className="p-2">Task ID</th><th className="p-2">Tokens</th><th className="p-2">输入类型</th><th className="p-2">单价(元/百万)</th><th className="p-2">费用(元)</th><th className="p-2">Status</th><th className="p-2">Time</th></tr>
               </thead>
               <tbody>
                 {usage.map(u => (
-                  <tr key={u.id} className="border-b"><td className="p-2">{u.endpoint}</td><td className="p-2 font-mono text-xs">{u.taskId}</td><td className="p-2 font-semibold">{u.completionTokens}</td><td className="p-2">{u.status}</td><td className="p-2">{new Date(u.createdAt).toLocaleString()}</td></tr>
+                  <tr key={u.id} className="border-b">
+                    <td className="p-2">{u.endpoint}</td>
+                    <td className="p-2 font-mono text-xs">{u.taskId}</td>
+                    <td className="p-2 font-semibold">{u.completionTokens}</td>
+                    <td className="p-2">
+                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${u.hasVideoInput ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
+                        {u.hasVideoInput ? '含视频' : '纯文本'}
+                      </span>
+                    </td>
+                    <td className="p-2">{u.hasVideoInput ? '28' : '46'}</td>
+                    <td className="p-2 font-semibold text-orange-600">¥{parseFloat(u.costYuan || '0').toFixed(4)}</td>
+                    <td className="p-2">{u.status}</td>
+                    <td className="p-2">{new Date(u.createdAt).toLocaleString()}</td>
+                  </tr>
                 ))}
               </tbody>
             </table>
+            </div>
             {/* Mobile Cards */}
             <div className="md:hidden grid gap-4">
               {usage.map(u => (
@@ -724,7 +768,7 @@ function Dashboard() {
                   <div className="flex justify-between items-center">
                     <span className="font-semibold text-gray-800 break-all">{u.endpoint}</span>
                     <span className={`shrink-0 ml-2 inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                      u.status === 'success' ? 'bg-green-100 text-green-700' :
+                      u.status === 'succeeded' ? 'bg-green-100 text-green-700' :
                       u.status === 'failed' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-700'
                     }`}>
                       {u.status}
@@ -734,6 +778,12 @@ function Dashboard() {
                   <div className="flex justify-between items-center text-sm">
                     <span className="text-gray-500 text-xs">{new Date(u.createdAt).toLocaleString()}</span>
                     <span className="font-semibold text-green-600">Tokens: {u.completionTokens}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm pt-1 border-t border-gray-200">
+                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${u.hasVideoInput ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
+                      {u.hasVideoInput ? '含视频' : '纯文本'} · 单价 {u.hasVideoInput ? '28' : '46'}
+                    </span>
+                    <span className="font-semibold text-orange-600">¥{parseFloat(u.costYuan || '0').toFixed(4)}</span>
                   </div>
                 </div>
               ))}
