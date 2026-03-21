@@ -28,6 +28,7 @@ function Dashboard() {
   const [usageEndDate, setUsageEndDate] = useState('');
   const [usageTotalTokens, setUsageTotalTokens] = useState(0);
   const [usageTotalCost, setUsageTotalCost] = useState('0');
+  const [usageKeySummary, setUsageKeySummary] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [adminKeys, setAdminKeys] = useState<any[]>([]);
   const [newKeyName, setNewKeyName] = useState('');
@@ -129,6 +130,7 @@ function Dashboard() {
       setUsagePage(res.data.page);
       setUsageTotalTokens(res.data.totalTokens);
       setUsageTotalCost(res.data.totalCost);
+      setUsageKeySummary(res.data.keySummary || []);
     } catch (err) {
       console.error('Failed to fetch usage', err);
     }
@@ -823,6 +825,24 @@ function Dashboard() {
               </p>
             </div>
             <div className="text-sm text-gray-500 mb-2">共 {usageTotal} 条记录</div>
+            {/* Per-Key Summary */}
+            {usageKeySummary.length > 0 && (
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">按 API Key 汇总</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {usageKeySummary.map(k => (
+                    <div key={k.keyId} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                      <div className="font-medium text-gray-800 text-sm truncate" title={k.keyName}>{k.keyName}</div>
+                      <div className="flex justify-between items-center mt-2 text-sm">
+                        <span className="text-gray-500">{k.requestCount} 次请求</span>
+                        <span className="font-semibold text-green-600">{k.totalTokens} tokens</span>
+                      </div>
+                      <div className="text-right text-sm font-semibold text-orange-600 mt-1">¥{k.totalCost}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {/* Desktop Table */}
             <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-sm hidden md:table">

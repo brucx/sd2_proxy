@@ -192,10 +192,30 @@ app.get('/api/panel/usage', authMiddleware, async (c) => {
       .limit(pageSize)
       .offset(offset);
 
+    // Per-key summary
+    const keySummary = await db.select({
+      keyId: schema.usageLogs.keyId,
+      keyName: schema.keys.name,
+      totalTokens: sql<number>`coalesce(sum(${schema.usageLogs.completionTokens}), 0)`,
+      totalCost: sql<string>`coalesce(sum(${schema.usageLogs.costYuan}::numeric), 0)`,
+      requestCount: sql<number>`count(*)`,
+    })
+      .from(schema.usageLogs)
+      .innerJoin(schema.keys, eq(schema.usageLogs.keyId, schema.keys.id))
+      .where(where)
+      .groupBy(schema.usageLogs.keyId, schema.keys.name);
+
     return c.json({
       logs, total, page, pageSize,
       totalTokens: Number(totalsResult[0]?.totalTokens || 0),
       totalCost: parseFloat(String(totalsResult[0]?.totalCost || '0')).toFixed(4),
+      keySummary: keySummary.map(k => ({
+        keyId: k.keyId,
+        keyName: k.keyName,
+        totalTokens: Number(k.totalTokens),
+        totalCost: parseFloat(String(k.totalCost || '0')).toFixed(4),
+        requestCount: Number(k.requestCount),
+      })),
     });
   } catch (error) {
     console.error('Tenant usage query error:', error);
