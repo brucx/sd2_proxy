@@ -4,7 +4,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { logger as honoLogger } from 'hono/logger';
 import { cors } from 'hono/cors';
 import bcrypt from 'bcrypt';
-import { db } from './db/index.js';
+import { db, client } from './db/index.js';
 import * as schema from './db/schema.js';
 import { eq } from 'drizzle-orm';
 
@@ -13,7 +13,7 @@ import type { AppVariables } from './types.js';
 import { logger } from './utils/logger.util.js';
 import { startCleanupInterval } from './middlewares/proxy.middleware.js';
 import { loadConcurrencyCache } from './services/concurrency.service.js';
-import { startCronJobs } from './services/cron.service.js';
+import { startCronJobs, stopCronJobs } from './services/cron.service.js';
 
 // Routes
 import { authRoutes } from './routes/auth.routes.js';
@@ -83,7 +83,30 @@ app.get('*', serveStatic({ path: '../frontend/dist/index.html' }));
 const port = 3000;
 logger.info(`Server is running on port ${port}`);
 
-serve({
+const server = serve({
   fetch: app.fetch,
   port
 });
+
+// Graceful Shutdown
+const gracefulShutdown = async (signal: string) => {
+  logger.info(`Received ${signal}. Shutting down gracefully...`);
+  
+  stopCronJobs();
+  
+  server.close(() => {
+    logger.info('HTTP server closed');
+  });
+  
+  try {
+    await client.end({ timeout: 5 });
+    logger.info('Database connections closed');
+  } catch (e) {
+    logger.error({ err: e }, 'Error closing database connections');
+  }
+  
+  process.exit(0);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

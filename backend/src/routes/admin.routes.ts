@@ -12,6 +12,65 @@ export const adminRoutes = new Hono<{ Variables: AppVariables }>();
 
 adminRoutes.use('*', authMiddleware, adminMiddleware);
 
+// Admin: Platform-wide statistics
+adminRoutes.get('/stats', async (c) => {
+  const [userStats] = await db.select({
+    totalUsers: sql<number>`count(*)`,
+    activeUsers: sql<number>`count(*) filter (where ${schema.users.status} = 'active')`,
+    suspendedUsers: sql<number>`count(*) filter (where ${schema.users.status} = 'suspended')`,
+    totalBalance: sql<string>`coalesce(sum(${schema.users.balance}), 0)`,
+  }).from(schema.users);
+
+  const [keyStats] = await db.select({
+    totalKeys: sql<number>`count(*)`,
+    activeKeys: sql<number>`count(*) filter (where ${schema.keys.enabled} = true and ${schema.keys.deletedAt} is null)`,
+  }).from(schema.keys);
+
+  const [rechargeStats] = await db.select({
+    totalRecharge: sql<string>`coalesce(sum(${schema.balanceAudit.amount}), 0)`,
+  }).from(schema.balanceAudit);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const [taskStats] = await db.select({
+    totalTasks: sql<number>`count(*)`,
+    pendingTasks: sql<number>`count(*) filter (where ${schema.usageLogs.status} = 'pending')`,
+    succeededTasks: sql<number>`count(*) filter (where ${schema.usageLogs.status} = 'succeeded')`,
+    failedTasks: sql<number>`count(*) filter (where ${schema.usageLogs.status} = 'failed')`,
+    todayTasks: sql<number>`count(*) filter (where ${schema.usageLogs.createdAt} >= ${today})`,
+    todayCost: sql<string>`coalesce(sum(${schema.usageLogs.costYuan}::numeric) filter (where ${schema.usageLogs.createdAt} >= ${today}), 0)`,
+  }).from(schema.usageLogs);
+
+  const totalBalance = parseFloat(String(userStats?.totalBalance || '0'));
+  const totalRecharge = parseFloat(String(rechargeStats?.totalRecharge || '0'));
+
+  return c.json({
+    users: {
+      total: Number(userStats?.totalUsers || 0),
+      active: Number(userStats?.activeUsers || 0),
+      suspended: Number(userStats?.suspendedUsers || 0),
+    },
+    keys: {
+      total: Number(keyStats?.totalKeys || 0),
+      active: Number(keyStats?.activeKeys || 0),
+    },
+    finance: {
+      totalBalance: totalBalance.toFixed(4),
+      totalRecharge: totalRecharge.toFixed(4),
+      totalConsumed: Math.max(totalRecharge - totalBalance, 0).toFixed(4),
+    },
+    tasks: {
+      total: Number(taskStats?.totalTasks || 0),
+      pending: Number(taskStats?.pendingTasks || 0),
+      succeeded: Number(taskStats?.succeededTasks || 0),
+      failed: Number(taskStats?.failedTasks || 0),
+      today: Number(taskStats?.todayTasks || 0),
+      todayCost: parseFloat(String(taskStats?.todayCost || '0')).toFixed(4),
+    },
+  });
+});
+
 // Admin: Reset user password
 adminRoutes.put('/users/:id/password', async (c) => {
   const userId = parseInt(c.req.param('id'));
@@ -310,6 +369,7 @@ adminRoutes.get('/keys', async (c) => {
       apiKey: schema.keys.apiKey,
       name: schema.keys.name,
       enabled: schema.keys.enabled,
+      expiresAt: schema.keys.expiresAt,
       createdAt: schema.keys.createdAt,
     })
     .from(schema.keys)
@@ -319,7 +379,7 @@ adminRoutes.get('/keys', async (c) => {
 
 // Admin: Create key for user
 adminRoutes.post('/keys', async (c) => {
-  const { userId, name } = await c.req.json();
+  const { userId, name, expiresAt } = await c.req.json();
   if (!userId || !name) return c.json({ error: 'userId and name are required' }, 400);
 
   const targetUser = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
@@ -327,7 +387,12 @@ adminRoutes.post('/keys', async (c) => {
 
   const { v4: uuidv4 } = await import('uuid');
   const apiKey = `sk-${uuidv4().replace(/-/g, '')}`;
-  await db.insert(schema.keys).values({ userId, apiKey, name });
+  await db.insert(schema.keys).values({
+    userId,
+    apiKey,
+    name,
+    ...(expiresAt ? { expiresAt: new Date(expiresAt) } : {}),
+  });
   return c.json({ success: true, apiKey });
 });
 

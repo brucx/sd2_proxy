@@ -82,11 +82,16 @@ tenantRoutes.get('/keys', async (c) => {
 // Tenant: Create key
 tenantRoutes.post('/keys', async (c) => {
   const user = c.get('user');
-  const { name } = await c.req.json();
+  const { name, expiresAt } = await c.req.json();
   const { v4: uuidv4 } = await import('uuid');
   const apiKey = `sk-${uuidv4().replace(/-/g, '')}`;
 
-  await db.insert(schema.keys).values({ userId: user.id, apiKey, name });
+  await db.insert(schema.keys).values({
+    userId: user.id,
+    apiKey,
+    name,
+    ...(expiresAt ? { expiresAt: new Date(expiresAt) } : {}),
+  });
   return c.json({ success: true, apiKey });
 });
 

@@ -69,6 +69,9 @@ export const proxyAuthMiddleware = async (c: Context<{ Variables: AppVariables }
     if (!key.enabled || key.deletedAt) {
       return c.json({ error: 'Invalid API Key' }, 401);
     }
+    if (key.expiresAt && new Date(key.expiresAt) < new Date()) {
+      return c.json({ error: 'API Key has expired' }, 401);
+    }
     const whitelist = await db.select().from(schema.ipWhitelist).where(eq(schema.ipWhitelist.userId, key.userId));
     cached = { record: key, whitelist, expiry: now + KEY_CACHE_TTL };
     keyCache.set(apiKey, cached);

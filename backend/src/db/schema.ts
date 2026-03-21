@@ -18,6 +18,7 @@ export const keys = pgTable('keys', {
   name: varchar('name', { length: 255 }).notNull(),
   enabled: boolean('enabled').notNull().default(true),
   deletedAt: timestamp('deleted_at'),
+  expiresAt: timestamp('expires_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => [
   index('keys_user_id_idx').on(table.userId),

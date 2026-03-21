@@ -9,6 +9,8 @@ import { logger } from '../utils/logger.util.js';
 
 const CRON_BATCH_SIZE = 10;
 
+let cronTask: cron.ScheduledTask | null = null;
+
 const processPendingTask = async (log: any) => {
   try {
     if (!log.taskId) return;
@@ -61,7 +63,7 @@ const processPendingTask = async (log: any) => {
 };
 
 export function startCronJobs() {
-  cron.schedule('*/5 * * * *', async () => {
+  cronTask = cron.schedule('*/5 * * * *', async () => {
     logger.info('Running Cron Job to poll pending tasks...');
     try {
       const pendingLogs = await db.select().from(schema.usageLogs).where(eq(schema.usageLogs.status, 'pending'));
@@ -100,4 +102,11 @@ export function startCronJobs() {
       logger.error({ err: error }, 'Cron Job Error');
     }
   });
+}
+
+export function stopCronJobs() {
+  if (cronTask) {
+    cronTask.stop();
+    cronTask = null;
+  }
 }
