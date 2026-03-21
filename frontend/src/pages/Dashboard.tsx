@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, Fragment, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 
@@ -8,6 +8,12 @@ api.interceptors.request.use((config) => {
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
+
+/** Mask an API key: show first 8 + '...' + last 4 chars */
+const maskKey = (key: string) => {
+  if (!key || key.length <= 14) return key;
+  return key.slice(0, 8) + '····' + key.slice(-4);
+};
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -41,6 +47,25 @@ function Dashboard() {
   const [requestLogsPageSize] = useState(20);
   const [requestLogsUserFilter, setRequestLogsUserFilter] = useState<string>('');
   const [expandedLogId, setExpandedLogId] = useState<number | null>(null);
+  const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
+
+  const copyKey = useCallback(async (keyId: number, apiKey: string) => {
+    try {
+      await navigator.clipboard.writeText(apiKey);
+      setCopiedKeyId(keyId);
+      setTimeout(() => setCopiedKeyId(null), 1500);
+    } catch {
+      // fallback
+      const ta = document.createElement('textarea');
+      ta.value = apiKey;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setCopiedKeyId(keyId);
+      setTimeout(() => setCopiedKeyId(null), 1500);
+    }
+  }, []);
 
   useEffect(() => {
     if (!localStorage.getItem('token')) {
@@ -249,7 +274,18 @@ function Dashboard() {
                   <tr key={k.id} className="border-b">
                     <td className="p-2">{k.username}</td>
                     <td className="p-2">{k.name}</td>
-                    <td className="p-2 font-mono text-xs text-gray-600">{k.apiKey}</td>
+                    <td className="p-2 font-mono text-xs text-gray-600">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span>{maskKey(k.apiKey)}</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); copyKey(k.id, k.apiKey); }}
+                          className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-gray-100 hover:bg-blue-100 text-gray-500 hover:text-blue-600 transition-colors"
+                          title="复制 Key"
+                        >
+                          {copiedKeyId === k.id ? '✅' : '📋'}
+                        </button>
+                      </span>
+                    </td>
                     <td className="p-2">
                       <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${k.enabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
                         {k.enabled ? '启用' : '禁用'}
@@ -406,7 +442,22 @@ function Dashboard() {
               </thead>
               <tbody>
                 {keys.map(k => (
-                  <tr key={k.id} className="border-b"><td className="p-2">{k.name}</td><td className="p-2 font-mono text-sm text-gray-600">{k.apiKey}</td><td className="p-2 text-sm">{new Date(k.createdAt).toLocaleDateString()}</td></tr>
+                  <tr key={k.id} className="border-b">
+                    <td className="p-2">{k.name}</td>
+                    <td className="p-2 font-mono text-sm text-gray-600">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span>{maskKey(k.apiKey)}</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); copyKey(k.id, k.apiKey); }}
+                          className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-gray-100 hover:bg-blue-100 text-gray-500 hover:text-blue-600 transition-colors"
+                          title="复制 Key"
+                        >
+                          {copiedKeyId === k.id ? '✅' : '📋'}
+                        </button>
+                      </span>
+                    </td>
+                    <td className="p-2 text-sm">{new Date(k.createdAt).toLocaleDateString()}</td>
+                  </tr>
                 ))}
               </tbody>
             </table>
