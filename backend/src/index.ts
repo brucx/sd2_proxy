@@ -233,9 +233,27 @@ const proxyAuthMiddleware = async (c: any, next: any) => {
   await next();
 };
 
+// Model ID mapping: user-facing name -> internal endpoint ID
+const MODEL_MAP: Record<string, string> = {
+  'doubao-seedance-2.0-fast': 'ep-20260307130821-xw5wf',
+  'doubao-seedance-2.0-fast-260128': 'ep-20260307130821-xw5wf',
+  'doubao-seedance-2-0': 'ep-20260307130721-bx7tv',
+  'doubao-seedance-2-0-260128': 'ep-20260307130721-bx7tv',
+};
+
 app.post('/api/v1/doubao/create', proxyAuthMiddleware, async (c) => {
   const keyRecord = c.get('keyRecord') as any;
   const body = await c.req.json();
+
+  // Map model name to endpoint ID
+  const userModel = body.model;
+  const mappedModel = MODEL_MAP[userModel];
+  if (!mappedModel) {
+    return c.json({
+      error: `Unsupported model: "${userModel}". Supported models: ${Object.keys(MODEL_MAP).join(', ')}`
+    }, 400);
+  }
+  body.model = mappedModel;
 
   try {
     const upstreamRes = await fetch(`${UPSTREAM_URL}/api/v1/doubao/create`, {
