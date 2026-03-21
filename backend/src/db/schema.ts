@@ -27,6 +27,7 @@ export const usageLogs = pgTable('usage_logs', {
   hasVideoInput: boolean('has_video_input').notNull().default(false),
   costYuan: text('cost_yuan').notNull().default('0'),
   status: varchar('status', { length: 50 }).default('pending'), // 'pending', 'succeeded', 'failed'
+  resultData: text('result_data'), // 任务完成时的上游完整响应 JSON
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

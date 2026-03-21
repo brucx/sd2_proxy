@@ -223,6 +223,32 @@ app.get('/api/panel/usage', authMiddleware, async (c) => {
   }
 });
 
+// Get usage log result detail (for expanding rows)
+app.get('/api/panel/usage/:id/result', authMiddleware, async (c) => {
+  const user = c.get('user') as any;
+  const logId = parseInt(c.req.param('id'));
+
+  try {
+    const log = await db.select({
+      id: schema.usageLogs.id,
+      userId: schema.usageLogs.userId,
+      resultData: schema.usageLogs.resultData,
+    }).from(schema.usageLogs).where(eq(schema.usageLogs.id, logId)).limit(1);
+
+    if (log.length === 0) return c.json({ error: 'Not found' }, 404);
+
+    // Tenant can only view own records
+    if (user.role !== 'admin' && log[0]!.userId !== user.id) {
+      return c.json({ error: 'Forbidden' }, 403);
+    }
+
+    return c.json({ resultData: log[0]!.resultData });
+  } catch (error) {
+    console.error('Usage result query error:', error);
+    return c.json({ error: 'Internal Server Error' }, 500);
+  }
+});
+
 // Tenant: Export Usage CSV
 app.get('/api/panel/usage/export', authMiddleware, async (c) => {
   const user = c.get('user') as any;
@@ -700,6 +726,7 @@ app.post('/api/v1/doubao/get_result', proxyAuthMiddleware, async (c) => {
             status: data.status,
             completionTokens: completionTokens,
             costYuan: cost,
+            resultData: JSON.stringify(data),
             updatedAt: new Date()
           })
           .where(eq(schema.usageLogs.taskId, data.id));
@@ -768,6 +795,7 @@ cron.schedule('*/5 * * * *', async () => {
               status: data.status,
               completionTokens: completionTokens,
               costYuan: cost,
+              resultData: JSON.stringify(data),
               updatedAt: new Date()
             })
             .where(eq(schema.usageLogs.id, log.id));

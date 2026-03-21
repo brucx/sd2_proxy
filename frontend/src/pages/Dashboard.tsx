@@ -56,6 +56,9 @@ function Dashboard() {
   const [requestLogsPageSize] = useState(20);
   const [requestLogsUserFilter, setRequestLogsUserFilter] = useState<string>('');
   const [expandedLogId, setExpandedLogId] = useState<number | null>(null);
+  const [expandedUsageId, setExpandedUsageId] = useState<number | null>(null);
+  const [usageResultCache, setUsageResultCache] = useState<Record<number, string | null>>({});
+  const [usageResultLoading, setUsageResultLoading] = useState<number | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
 
   // IP Whitelist state (tenant)
@@ -153,6 +156,24 @@ function Dashboard() {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Failed to export usage CSV', err);
+    }
+  };
+
+  const fetchUsageResult = async (logId: number) => {
+    if (expandedUsageId === logId) {
+      setExpandedUsageId(null);
+      return;
+    }
+    setExpandedUsageId(logId);
+    if (usageResultCache[logId] !== undefined) return;
+    setUsageResultLoading(logId);
+    try {
+      const res = await api.get(`/usage/${logId}/result`);
+      setUsageResultCache(prev => ({ ...prev, [logId]: res.data.resultData }));
+    } catch {
+      setUsageResultCache(prev => ({ ...prev, [logId]: null }));
+    } finally {
+      setUsageResultLoading(null);
     }
   };
 
@@ -467,11 +488,16 @@ function Dashboard() {
             <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-sm hidden md:table">
               <thead>
-                <tr className="border-b bg-gray-50"><th className="p-2">用户</th><th className="p-2">Key ID</th><th className="p-2">Task ID</th><th className="p-2">Tokens</th><th className="p-2">输入类型</th><th className="p-2">单价(元/百万)</th><th className="p-2">费用(元)</th><th className="p-2">Status</th><th className="p-2">时间</th></tr>
+                <tr className="border-b bg-gray-50"><th className="p-2"></th><th className="p-2">用户</th><th className="p-2">Key ID</th><th className="p-2">Task ID</th><th className="p-2">Tokens</th><th className="p-2">输入类型</th><th className="p-2">单价(元/百万)</th><th className="p-2">费用(元)</th><th className="p-2">Status</th><th className="p-2">时间</th></tr>
               </thead>
               <tbody>
                 {usage.map(u => (
-                  <tr key={u.id} className="border-b">
+                  <Fragment key={u.id}>
+                  <tr
+                    className={`border-b cursor-pointer hover:bg-gray-50 ${expandedUsageId === u.id ? 'bg-blue-50' : ''}`}
+                    onClick={() => fetchUsageResult(u.id)}
+                  >
+                    <td className="p-2 text-gray-400">{expandedUsageId === u.id ? '▼' : '▶'}</td>
                     <td className="p-2">{u.username}</td>
                     <td className="p-2">{u.keyId}</td>
                     <td className="p-2 font-mono text-xs">{u.taskId}</td>
@@ -483,9 +509,31 @@ function Dashboard() {
                     </td>
                     <td className="p-2">{u.hasVideoInput ? '28' : '46'}</td>
                     <td className="p-2 font-semibold text-orange-600">¥{parseFloat(u.costYuan || '0').toFixed(4)}</td>
-                    <td className="p-2">{u.status}</td>
+                    <td className="p-2">
+                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                        u.status === 'succeeded' ? 'bg-green-100 text-green-700' :
+                        u.status === 'failed' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-700'
+                      }`}>{u.status}</span>
+                    </td>
                     <td className="p-2 whitespace-nowrap">{new Date(u.createdAt).toLocaleString()}</td>
                   </tr>
+                  {expandedUsageId === u.id && (
+                    <tr key={`${u.id}-detail`} className="border-b bg-gray-50">
+                      <td colSpan={10} className="p-4">
+                        <h4 className="font-semibold text-gray-700 mb-2">任务返回详情</h4>
+                        {usageResultLoading === u.id ? (
+                          <p className="text-sm text-gray-500">加载中...</p>
+                        ) : usageResultCache[u.id] ? (
+                          <pre className="bg-gray-900 text-green-300 p-3 rounded-lg text-xs overflow-auto max-h-64 whitespace-pre-wrap">
+                            {JSON.stringify(JSON.parse(usageResultCache[u.id]!), null, 2)}
+                          </pre>
+                        ) : (
+                          <p className="text-sm text-gray-400">暂无返回数据</p>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -493,22 +541,47 @@ function Dashboard() {
             {/* Mobile Cards */}
             <div className="md:hidden grid gap-4">
               {usage.map(u => (
-                <div key={u.id} className="border border-gray-100 rounded-lg p-4 bg-gray-50 shadow-sm flex flex-col gap-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold text-gray-800">{u.username}</span>
-                    <span className="text-xs font-semibold px-2 py-1 rounded bg-blue-100 text-blue-800">{u.status}</span>
+                <div key={u.id} className="border border-gray-100 rounded-lg bg-gray-50 shadow-sm flex flex-col overflow-hidden">
+                  <div
+                    className={`p-4 flex flex-col gap-2 cursor-pointer ${expandedUsageId === u.id ? 'bg-blue-50' : ''}`}
+                    onClick={() => fetchUsageResult(u.id)}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold text-gray-800">{u.username}</span>
+                      <span className={`text-xs font-semibold px-2 py-1 rounded ${
+                        u.status === 'succeeded' ? 'bg-green-100 text-green-700' :
+                        u.status === 'failed' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-700'
+                      }`}>{u.status}</span>
+                    </div>
+                    <div className="text-sm text-gray-600 break-all">Task ID: <span className="font-mono text-xs">{u.taskId}</span></div>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-gray-500 text-xs">{new Date(u.createdAt).toLocaleString()}</span>
+                      <span className="font-semibold text-green-600">Tokens: {u.completionTokens}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm pt-1 border-t border-gray-200">
+                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${u.hasVideoInput ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
+                        {u.hasVideoInput ? '含视频' : '纯文本'} · 单价 {u.hasVideoInput ? '28' : '46'}
+                      </span>
+                      <span className="font-semibold text-orange-600">¥{parseFloat(u.costYuan || '0').toFixed(4)}</span>
+                    </div>
+                    <div className="text-center text-gray-400 text-xs mt-1">
+                      {expandedUsageId === u.id ? '收起详情 ▲' : '查看详情 ▼'}
+                    </div>
                   </div>
-                  <div className="text-sm text-gray-600 break-all">Task ID: <span className="font-mono text-xs">{u.taskId}</span></div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-500 text-xs">{new Date(u.createdAt).toLocaleString()}</span>
-                    <span className="font-semibold text-green-600">Tokens: {u.completionTokens}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm pt-1 border-t border-gray-200">
-                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${u.hasVideoInput ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
-                      {u.hasVideoInput ? '含视频' : '纯文本'} · 单价 {u.hasVideoInput ? '28' : '46'}
-                    </span>
-                    <span className="font-semibold text-orange-600">¥{parseFloat(u.costYuan || '0').toFixed(4)}</span>
-                  </div>
+                  {expandedUsageId === u.id && (
+                    <div className="bg-white p-4 border-t border-gray-200">
+                      <h4 className="font-semibold text-gray-700 mb-2 text-sm">任务返回详情</h4>
+                      {usageResultLoading === u.id ? (
+                        <p className="text-sm text-gray-500">加载中...</p>
+                      ) : usageResultCache[u.id] ? (
+                        <pre className="bg-gray-900 text-green-300 p-3 rounded-lg text-xs overflow-auto max-h-48 whitespace-pre-wrap">
+                          {JSON.stringify(JSON.parse(usageResultCache[u.id]!), null, 2)}
+                        </pre>
+                      ) : (
+                        <p className="text-sm text-gray-400">暂无返回数据</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -847,11 +920,16 @@ function Dashboard() {
             <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-sm hidden md:table">
               <thead>
-                <tr className="border-b bg-gray-50"><th className="p-2">Endpoint</th><th className="p-2">Task ID</th><th className="p-2">Tokens</th><th className="p-2">输入类型</th><th className="p-2">单价(元/百万)</th><th className="p-2">费用(元)</th><th className="p-2">Status</th><th className="p-2">时间</th></tr>
+                <tr className="border-b bg-gray-50"><th className="p-2"></th><th className="p-2">Endpoint</th><th className="p-2">Task ID</th><th className="p-2">Tokens</th><th className="p-2">输入类型</th><th className="p-2">单价(元/百万)</th><th className="p-2">费用(元)</th><th className="p-2">Status</th><th className="p-2">时间</th></tr>
               </thead>
               <tbody>
                 {usage.map(u => (
-                  <tr key={u.id} className="border-b">
+                  <Fragment key={u.id}>
+                  <tr
+                    className={`border-b cursor-pointer hover:bg-gray-50 ${expandedUsageId === u.id ? 'bg-blue-50' : ''}`}
+                    onClick={() => fetchUsageResult(u.id)}
+                  >
+                    <td className="p-2 text-gray-400">{expandedUsageId === u.id ? '▼' : '▶'}</td>
                     <td className="p-2">{u.endpoint}</td>
                     <td className="p-2 font-mono text-xs">{u.taskId}</td>
                     <td className="p-2 font-semibold">{u.completionTokens}</td>
@@ -862,9 +940,31 @@ function Dashboard() {
                     </td>
                     <td className="p-2">{u.hasVideoInput ? '28' : '46'}</td>
                     <td className="p-2 font-semibold text-orange-600">¥{parseFloat(u.costYuan || '0').toFixed(4)}</td>
-                    <td className="p-2">{u.status}</td>
+                    <td className="p-2">
+                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                        u.status === 'succeeded' ? 'bg-green-100 text-green-700' :
+                        u.status === 'failed' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-700'
+                      }`}>{u.status}</span>
+                    </td>
                     <td className="p-2 whitespace-nowrap">{new Date(u.createdAt).toLocaleString()}</td>
                   </tr>
+                  {expandedUsageId === u.id && (
+                    <tr key={`${u.id}-detail`} className="border-b bg-gray-50">
+                      <td colSpan={9} className="p-4">
+                        <h4 className="font-semibold text-gray-700 mb-2">任务返回详情</h4>
+                        {usageResultLoading === u.id ? (
+                          <p className="text-sm text-gray-500">加载中...</p>
+                        ) : usageResultCache[u.id] ? (
+                          <pre className="bg-gray-900 text-green-300 p-3 rounded-lg text-xs overflow-auto max-h-64 whitespace-pre-wrap">
+                            {JSON.stringify(JSON.parse(usageResultCache[u.id]!), null, 2)}
+                          </pre>
+                        ) : (
+                          <p className="text-sm text-gray-400">暂无返回数据</p>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -872,27 +972,49 @@ function Dashboard() {
             {/* Mobile Cards */}
             <div className="md:hidden grid gap-4">
               {usage.map(u => (
-                <div key={u.id} className="border border-gray-100 rounded-lg p-4 bg-gray-50 shadow-sm flex flex-col gap-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold text-gray-800 break-all">{u.endpoint}</span>
-                    <span className={`shrink-0 ml-2 inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                      u.status === 'succeeded' ? 'bg-green-100 text-green-700' :
-                      u.status === 'failed' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-700'
-                    }`}>
-                      {u.status}
-                    </span>
+                <div key={u.id} className="border border-gray-100 rounded-lg bg-gray-50 shadow-sm flex flex-col overflow-hidden">
+                  <div
+                    className={`p-4 flex flex-col gap-2 cursor-pointer ${expandedUsageId === u.id ? 'bg-blue-50' : ''}`}
+                    onClick={() => fetchUsageResult(u.id)}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold text-gray-800 break-all">{u.endpoint}</span>
+                      <span className={`shrink-0 ml-2 inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                        u.status === 'succeeded' ? 'bg-green-100 text-green-700' :
+                        u.status === 'failed' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-700'
+                      }`}>
+                        {u.status}
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-600 break-all">Task ID: <span className="font-mono text-xs">{u.taskId}</span></div>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-gray-500 text-xs">{new Date(u.createdAt).toLocaleString()}</span>
+                      <span className="font-semibold text-green-600">Tokens: {u.completionTokens}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm pt-1 border-t border-gray-200">
+                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${u.hasVideoInput ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
+                        {u.hasVideoInput ? '含视频' : '纯文本'} · 单价 {u.hasVideoInput ? '28' : '46'}
+                      </span>
+                      <span className="font-semibold text-orange-600">¥{parseFloat(u.costYuan || '0').toFixed(4)}</span>
+                    </div>
+                    <div className="text-center text-gray-400 text-xs mt-1">
+                      {expandedUsageId === u.id ? '收起详情 ▲' : '查看详情 ▼'}
+                    </div>
                   </div>
-                  <div className="text-sm text-gray-600 break-all">Task ID: <span className="font-mono text-xs">{u.taskId}</span></div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-500 text-xs">{new Date(u.createdAt).toLocaleString()}</span>
-                    <span className="font-semibold text-green-600">Tokens: {u.completionTokens}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm pt-1 border-t border-gray-200">
-                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${u.hasVideoInput ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
-                      {u.hasVideoInput ? '含视频' : '纯文本'} · 单价 {u.hasVideoInput ? '28' : '46'}
-                    </span>
-                    <span className="font-semibold text-orange-600">¥{parseFloat(u.costYuan || '0').toFixed(4)}</span>
-                  </div>
+                  {expandedUsageId === u.id && (
+                    <div className="bg-white p-4 border-t border-gray-200">
+                      <h4 className="font-semibold text-gray-700 mb-2 text-sm">任务返回详情</h4>
+                      {usageResultLoading === u.id ? (
+                        <p className="text-sm text-gray-500">加载中...</p>
+                      ) : usageResultCache[u.id] ? (
+                        <pre className="bg-gray-900 text-green-300 p-3 rounded-lg text-xs overflow-auto max-h-48 whitespace-pre-wrap">
+                          {JSON.stringify(JSON.parse(usageResultCache[u.id]!), null, 2)}
+                        </pre>
+                      ) : (
+                        <p className="text-sm text-gray-400">暂无返回数据</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
