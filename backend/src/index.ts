@@ -13,7 +13,12 @@ import cron from 'node-cron';
 
 config();
 
-const app = new Hono();
+const app = new Hono<{
+  Variables: {
+    user: any;
+    keyRecord: any;
+  }
+}>();
 
 app.use('*', logger());
 app.use('*', cors());
@@ -37,7 +42,7 @@ const authMiddleware = async (c: any, next: any) => {
 };
 
 const adminMiddleware = async (c: any, next: any) => {
-  const user = c.get('user');
+  const user = c.get('user') as any;
   if (user.role !== 'admin') return c.json({ error: 'Forbidden' }, 403);
   await next();
 };
@@ -49,7 +54,7 @@ app.post('/api/panel/login', async (c) => {
   const { username, password } = await c.req.json();
   const user = await db.select().from(schema.users).where(eq(schema.users.username, username)).limit(1);
 
-  if (user.length === 0) return c.json({ error: 'Invalid credentials' }, 401);
+  if (!user || user.length === 0 || !user[0]) return c.json({ error: 'Invalid credentials' }, 401);
 
   const match = await bcrypt.compare(password, user[0].passwordHash);
   if (!match) return c.json({ error: 'Invalid credentials' }, 401);
@@ -60,7 +65,7 @@ app.post('/api/panel/login', async (c) => {
 
 // Get current user info
 app.get('/api/panel/me', authMiddleware, async (c) => {
-  const user = c.get('user');
+  const user = c.get('user') as any;
   const userInfo = await db.select({ id: schema.users.id, username: schema.users.username, role: schema.users.role }).from(schema.users).where(eq(schema.users.id, user.id)).limit(1);
   return c.json(userInfo[0]);
 });
@@ -85,14 +90,14 @@ app.post('/api/panel/admin/users', authMiddleware, adminMiddleware, async (c) =>
 
 // Tenant: Get keys
 app.get('/api/panel/keys', authMiddleware, async (c) => {
-  const user = c.get('user');
+  const user = c.get('user') as any;
   const userKeys = await db.select().from(schema.keys).where(eq(schema.keys.userId, user.id));
   return c.json(userKeys);
 });
 
 // Tenant: Create key
 app.post('/api/panel/keys', authMiddleware, async (c) => {
-  const user = c.get('user');
+  const user = c.get('user') as any;
   const { name } = await c.req.json();
   const { v4: uuidv4 } = await import('uuid');
   const apiKey = `sk-${uuidv4().replace(/-/g, '')}`;
@@ -103,7 +108,7 @@ app.post('/api/panel/keys', authMiddleware, async (c) => {
 
 // Tenant: Get Usage
 app.get('/api/panel/usage', authMiddleware, async (c) => {
-  const user = c.get('user');
+  const user = c.get('user') as any;
   const logs = await db.select().from(schema.usageLogs).where(eq(schema.usageLogs.userId, user.id));
   return c.json(logs);
 });
@@ -150,7 +155,7 @@ const proxyAuthMiddleware = async (c: any, next: any) => {
 };
 
 app.post('/api/v1/doubao/create', proxyAuthMiddleware, async (c) => {
-  const keyRecord = c.get('keyRecord');
+  const keyRecord = c.get('keyRecord') as any;
   const body = await c.req.json();
 
   try {
@@ -184,7 +189,7 @@ app.post('/api/v1/doubao/create', proxyAuthMiddleware, async (c) => {
 });
 
 app.post('/api/v1/doubao/get_result', proxyAuthMiddleware, async (c) => {
-  const keyRecord = c.get('keyRecord');
+  const keyRecord = c.get('keyRecord') as any;
   const body = await c.req.json();
 
   try {
