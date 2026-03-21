@@ -42,3 +42,10 @@ export const requestLogs = pgTable('request_logs', {
   ipAddress: varchar('ip_address', { length: 100 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+export const ipWhitelist = pgTable('ip_whitelist', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  ipAddress: varchar('ip_address', { length: 45 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});

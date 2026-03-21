@@ -244,6 +244,60 @@ app.put('/api/panel/admin/keys/:id/toggle', authMiddleware, adminMiddleware, asy
   return c.json({ success: true, enabled: newEnabled });
 });
 
+// -- IP Whitelist Management --
+
+// Get current user's IP whitelist
+app.get('/api/panel/whitelist', authMiddleware, async (c) => {
+  const user = c.get('user') as any;
+  const list = await db.select().from(schema.ipWhitelist).where(eq(schema.ipWhitelist.userId, user.id));
+  return c.json(list);
+});
+
+// Add IP to whitelist (max 2)
+app.post('/api/panel/whitelist', authMiddleware, async (c) => {
+  const user = c.get('user') as any;
+  const { ipAddress } = await c.req.json();
+
+  if (!ipAddress || typeof ipAddress !== 'string') {
+    return c.json({ error: 'ipAddress is required' }, 400);
+  }
+
+  // Basic IP format validation (IPv4 & IPv6)
+  const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
+  const ipv6Regex = /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/;
+  const trimmedIp = ipAddress.trim();
+  if (!ipv4Regex.test(trimmedIp) && !ipv6Regex.test(trimmedIp)) {
+    return c.json({ error: 'Invalid IP address format' }, 400);
+  }
+
+  // Check current count
+  const existing = await db.select().from(schema.ipWhitelist).where(eq(schema.ipWhitelist.userId, user.id));
+  if (existing.length >= 2) {
+    return c.json({ error: '最多只能设置 2 个白名单 IP' }, 400);
+  }
+
+  // Check duplicate
+  const duplicate = existing.find(e => e.ipAddress === trimmedIp);
+  if (duplicate) {
+    return c.json({ error: '该 IP 已在白名单中' }, 400);
+  }
+
+  await db.insert(schema.ipWhitelist).values({ userId: user.id, ipAddress: trimmedIp });
+  return c.json({ success: true });
+});
+
+// Delete IP from whitelist
+app.delete('/api/panel/whitelist/:id', authMiddleware, async (c) => {
+  const user = c.get('user') as any;
+  const id = parseInt(c.req.param('id'));
+  const record = await db.select().from(schema.ipWhitelist).where(eq(schema.ipWhitelist.id, id)).limit(1);
+  if (record.length === 0 || record[0]!.userId !== user.id) {
+    return c.json({ error: 'Not found' }, 404);
+  }
+  await db.delete(schema.ipWhitelist).where(eq(schema.ipWhitelist.id, id));
+  return c.json({ success: true });
+});
+
 // -- API Proxy Middleware & Handlers --
 
 // Simple In-memory Rate Limiting (Requests per minute per key)
@@ -279,6 +333,17 @@ const proxyAuthMiddleware = async (c: any, next: any) => {
   }
 
   limit.count++;
+
+  // IP Whitelist check
+  const clientIp = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || 'unknown';
+  const whitelist = await db.select().from(schema.ipWhitelist).where(eq(schema.ipWhitelist.userId, keyRecord[0]!.userId));
+  if (whitelist.length > 0) {
+    const allowed = whitelist.some(w => w.ipAddress === clientIp);
+    if (!allowed) {
+      return c.json({ error: `IP ${clientIp} is not in the whitelist` }, 403);
+    }
+  }
+
   c.set('keyRecord', keyRecord[0]);
   await next();
 };

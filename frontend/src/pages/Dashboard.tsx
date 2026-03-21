@@ -49,6 +49,11 @@ function Dashboard() {
   const [expandedLogId, setExpandedLogId] = useState<number | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
 
+  // IP Whitelist state (tenant)
+  const [whitelist, setWhitelist] = useState<any[]>([]);
+  const [newWhitelistIp, setNewWhitelistIp] = useState('');
+  const [whitelistMsg, setWhitelistMsg] = useState('');
+
   const copyKey = useCallback(async (keyId: number, apiKey: string) => {
     try {
       await navigator.clipboard.writeText(apiKey);
@@ -88,12 +93,14 @@ function Dashboard() {
         setAdminKeys(keysRes.data);
         fetchRequestLogs();
       } else {
-        const [keysRes, usageRes] = await Promise.all([
+        const [keysRes, usageRes, whitelistRes] = await Promise.all([
           api.get('/keys'),
-          api.get('/usage')
+          api.get('/usage'),
+          api.get('/whitelist')
         ]);
         setKeys(keysRes.data);
         setUsage(usageRes.data);
+        setWhitelist(whitelistRes.data);
       }
     } catch (err: any) {
       if (err.response?.status === 401) {
@@ -168,6 +175,29 @@ function Dashboard() {
       setTimeout(() => { setResetUserId(null); setResetMsg(''); }, 1500);
     } catch (err: any) {
       setResetMsg(err.response?.data?.error || '重置失败');
+    }
+  };
+
+  const addWhitelistIp = async () => {
+    setWhitelistMsg('');
+    if (!newWhitelistIp.trim()) { setWhitelistMsg('请输入 IP 地址'); return; }
+    try {
+      await api.post('/whitelist', { ipAddress: newWhitelistIp.trim() });
+      setNewWhitelistIp('');
+      setWhitelistMsg('添加成功');
+      fetchData();
+      setTimeout(() => setWhitelistMsg(''), 1500);
+    } catch (err: any) {
+      setWhitelistMsg(err.response?.data?.error || '添加失败');
+    }
+  };
+
+  const deleteWhitelistIp = async (id: number) => {
+    try {
+      await api.delete(`/whitelist/${id}`);
+      fetchData();
+    } catch (err: any) {
+      setWhitelistMsg(err.response?.data?.error || '删除失败');
     }
   };
 
@@ -461,6 +491,51 @@ function Dashboard() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* IP Whitelist Management */}
+          <div className="bg-white p-6 rounded-xl shadow-sm">
+            <h2 className="text-xl font-bold mb-1">IP 白名单</h2>
+            <p className="text-sm text-gray-500 mb-4">设置后仅允许白名单中的 IP 调用 API，最多 2 个。未设置时不限制。</p>
+            <div className="flex gap-4 mb-4 items-end">
+              <div className="flex-1">
+                <label className="block text-sm text-gray-600 mb-1">IP 地址</label>
+                <input
+                  type="text"
+                  placeholder="例如 1.2.3.4"
+                  value={newWhitelistIp}
+                  onChange={e => setNewWhitelistIp(e.target.value)}
+                  className="border px-3 py-2 rounded-md w-full"
+                  disabled={whitelist.length >= 2}
+                />
+              </div>
+              <button
+                onClick={addWhitelistIp}
+                disabled={whitelist.length >= 2}
+                className="bg-blue-600 text-white px-4 py-2 rounded-md disabled:opacity-40 h-fit"
+              >{whitelist.length >= 2 ? '已达上限' : '添加'}</button>
+            </div>
+            {whitelistMsg && <p className={`mb-3 text-sm font-medium ${whitelistMsg.includes('成功') ? 'text-green-600' : 'text-red-500'}`}>{whitelistMsg}</p>}
+            {whitelist.length === 0 ? (
+              <p className="text-gray-400 text-sm">暂无白名单 IP（所有 IP 均可访问）</p>
+            ) : (
+              <table className="w-full text-left border-collapse text-sm">
+                <thead>
+                  <tr className="border-b bg-gray-50"><th className="p-2">IP 地址</th><th className="p-2">添加时间</th><th className="p-2">操作</th></tr>
+                </thead>
+                <tbody>
+                  {whitelist.map(w => (
+                    <tr key={w.id} className="border-b">
+                      <td className="p-2 font-mono">{w.ipAddress}</td>
+                      <td className="p-2">{new Date(w.createdAt).toLocaleString()}</td>
+                      <td className="p-2">
+                        <button onClick={() => deleteWhitelistIp(w.id)} className="text-red-500 hover:underline text-sm">删除</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
 
           <div className="bg-white p-6 rounded-xl shadow-sm">
