@@ -70,6 +70,13 @@ function Dashboard() {
   const [newWhitelistIp, setNewWhitelistIp] = useState('');
   const [whitelistMsg, setWhitelistMsg] = useState('');
 
+  // Balance state
+  const [topUpUserId, setTopUpUserId] = useState<number | null>(null);
+  const [topUpAmount, setTopUpAmount] = useState('');
+  const [topUpDesc, setTopUpDesc] = useState('');
+  const [topUpMsg, setTopUpMsg] = useState('');
+  const [tenantBalance, setTenantBalance] = useState<{balance: string, totalTopUp: string, totalConsumed: string} | null>(null);
+
   const copyKey = useCallback(async (keyId: number, apiKey: string) => {
     try {
       await navigator.clipboard.writeText(apiKey);
@@ -108,12 +115,14 @@ function Dashboard() {
         fetchUsage();
         fetchRequestLogs();
       } else {
-        const [keysRes, whitelistRes] = await Promise.all([
+        const [keysRes, whitelistRes, balanceRes] = await Promise.all([
           api.get('/keys'),
-          api.get('/whitelist')
+          api.get('/whitelist'),
+          api.get('/balance')
         ]);
         setKeys(keysRes.data);
         setWhitelist(whitelistRes.data);
+        setTenantBalance(balanceRes.data);
         fetchUsage();
       }
     } catch (err: any) {
@@ -296,6 +305,22 @@ function Dashboard() {
     navigate('/login');
   };
 
+  const adminTopUp = async (userId: number) => {
+    setTopUpMsg('');
+    const num = parseFloat(topUpAmount);
+    if (isNaN(num) || num <= 0) { setTopUpMsg('金额必须大于 0'); return; }
+    try {
+      await api.post(`/admin/users/${userId}/balance`, { amount: topUpAmount, description: topUpDesc || '管理员充值' });
+      setTopUpMsg('充值成功！');
+      setTopUpAmount('');
+      setTopUpDesc('');
+      fetchData();
+      setTimeout(() => { setTopUpUserId(null); setTopUpMsg(''); }, 1500);
+    } catch (err: any) {
+      setTopUpMsg(err.response?.data?.error || '充值失败');
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto p-4 sm:p-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 bg-white p-4 rounded-xl shadow-sm">
@@ -342,7 +367,7 @@ function Dashboard() {
             {/* Desktop Table */}
             <table className="w-full text-left border-collapse hidden md:table">
               <thead>
-                <tr className="border-b bg-gray-50"><th className="p-2">ID</th><th className="p-2">Username</th><th className="p-2">Role</th><th className="p-2">并发限制</th><th className="p-2">操作</th></tr>
+                <tr className="border-b bg-gray-50"><th className="p-2">ID</th><th className="p-2">Username</th><th className="p-2">Role</th><th className="p-2">余额(元)</th><th className="p-2">并发限制</th><th className="p-2">操作</th></tr>
               </thead>
               <tbody>
                 {users.map(u => (
@@ -350,6 +375,22 @@ function Dashboard() {
                     <td className="p-2">{u.id}</td>
                     <td className="p-2">{u.username}</td>
                     <td className="p-2">{u.role}</td>
+                    <td className="p-2">
+                      <span className={`font-mono text-sm font-semibold ${parseFloat(u.balance || '0') <= 0 ? 'text-red-600' : 'text-green-600'}`}>¥{parseFloat(u.balance || '0').toFixed(2)}</span>
+                      {topUpUserId === u.id ? (
+                        <div className="flex flex-col gap-1 mt-1">
+                          <div className="flex gap-1 items-center">
+                            <input type="number" step="0.01" min="0.01" placeholder="金额" value={topUpAmount} onChange={e => setTopUpAmount(e.target.value)} className="border px-2 py-1 rounded-md text-sm w-20" />
+                            <input type="text" placeholder="备注(可选)" value={topUpDesc} onChange={e => setTopUpDesc(e.target.value)} className="border px-2 py-1 rounded-md text-sm w-24" />
+                            <button onClick={() => adminTopUp(u.id)} className="bg-green-600 text-white px-2 py-1 rounded-md text-xs">确认</button>
+                            <button onClick={() => { setTopUpUserId(null); setTopUpMsg(''); }} className="text-gray-500 hover:underline text-xs">取消</button>
+                          </div>
+                          {topUpMsg && <span className={`text-xs ${topUpMsg.includes('成功') ? 'text-green-600' : 'text-red-500'}`}>{topUpMsg}</span>}
+                        </div>
+                      ) : (
+                        <button onClick={() => { setTopUpUserId(u.id); setTopUpAmount(''); setTopUpDesc(''); setTopUpMsg(''); }} className="text-green-600 hover:underline text-xs ml-2">充值</button>
+                      )}
+                    </td>
                     <td className="p-2">
                       {editConcurrencyUserId === u.id ? (
                         <div className="flex gap-1 items-center">
@@ -393,6 +434,25 @@ function Dashboard() {
                     <span className="text-xs text-gray-500 bg-gray-200 px-2 py-1 rounded">ID: {u.id}</span>
                   </div>
                   <div className="text-sm text-gray-600">Created: {new Date(u.createdAt).toLocaleDateString()}</div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-gray-600">余额:</span>
+                    <span className={`font-mono font-semibold ${parseFloat(u.balance || '0') <= 0 ? 'text-red-600' : 'text-green-600'}`}>¥{parseFloat(u.balance || '0').toFixed(2)}</span>
+                    {topUpUserId === u.id ? (
+                      <div className="flex flex-col gap-1">
+                        <div className="flex gap-1 items-center">
+                          <input type="number" step="0.01" min="0.01" placeholder="金额" value={topUpAmount} onChange={e => setTopUpAmount(e.target.value)} className="border px-2 py-1 rounded-md text-sm w-20" />
+                          <input type="text" placeholder="备注" value={topUpDesc} onChange={e => setTopUpDesc(e.target.value)} className="border px-2 py-1 rounded-md text-sm w-24" />
+                        </div>
+                        <div className="flex gap-1">
+                          <button onClick={() => adminTopUp(u.id)} className="bg-green-600 text-white px-2 py-1 rounded-md text-xs">确认</button>
+                          <button onClick={() => { setTopUpUserId(null); setTopUpMsg(''); }} className="text-gray-500 hover:underline text-xs">取消</button>
+                        </div>
+                        {topUpMsg && <span className={`text-xs ${topUpMsg.includes('成功') ? 'text-green-600' : 'text-red-500'}`}>{topUpMsg}</span>}
+                      </div>
+                    ) : (
+                      <button onClick={() => { setTopUpUserId(u.id); setTopUpAmount(''); setTopUpDesc(''); setTopUpMsg(''); }} className="text-green-600 hover:underline text-xs">充值</button>
+                    )}
+                  </div>
                   <div className="flex items-center gap-2 text-sm">
                     <span className="text-gray-600">并发:</span>
                     {editConcurrencyUserId === u.id ? (
@@ -820,6 +880,29 @@ function Dashboard() {
         </div>
       ) : (
         <div className="space-y-8">
+          {/* Tenant Balance Card */}
+          {tenantBalance && (
+            <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
+              <h2 className="text-xl font-bold mb-4">账户余额</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className={`p-4 rounded-lg border-2 ${parseFloat(tenantBalance.balance) <= 0 ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+                  <div className="text-sm text-gray-600">可用余额</div>
+                  <div className={`text-2xl font-bold ${parseFloat(tenantBalance.balance) <= 0 ? 'text-red-600' : 'text-green-700'}`}>¥{parseFloat(tenantBalance.balance).toFixed(4)}</div>
+                </div>
+                <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
+                  <div className="text-sm text-gray-600">总充值</div>
+                  <div className="text-2xl font-bold text-blue-700">¥{tenantBalance.totalTopUp}</div>
+                </div>
+                <div className="p-4 rounded-lg bg-orange-50 border border-orange-200">
+                  <div className="text-sm text-gray-600">总消耗</div>
+                  <div className="text-2xl font-bold text-orange-600">¥{tenantBalance.totalConsumed}</div>
+                </div>
+              </div>
+              {parseFloat(tenantBalance.balance) <= 0 && (
+                <p className="mt-3 text-sm text-red-600 font-medium">⚠️ 余额不足，将无法创建新任务，请联系管理员充值。</p>
+              )}
+            </div>
+          )}
           <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
             <h2 className="text-xl font-bold mb-4">API Keys</h2>
             <div className="flex flex-col sm:flex-row gap-4 mb-4">

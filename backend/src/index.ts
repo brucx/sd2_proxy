@@ -125,7 +125,7 @@ app.put('/api/panel/admin/users/:id/password', authMiddleware, adminMiddleware, 
 
 // Admin: Get all users
 app.get('/api/panel/admin/users', authMiddleware, adminMiddleware, async (c) => {
-  const usersList = await db.select({ id: schema.users.id, username: schema.users.username, role: schema.users.role, concurrencyLimit: schema.users.concurrencyLimit, createdAt: schema.users.createdAt }).from(schema.users);
+  const usersList = await db.select({ id: schema.users.id, username: schema.users.username, role: schema.users.role, concurrencyLimit: schema.users.concurrencyLimit, balance: schema.users.balance, createdAt: schema.users.createdAt }).from(schema.users);
   return c.json(usersList.map(u => ({
     ...u,
     activeConcurrency: concurrencyCache.get(u.id)?.active || 0,
@@ -159,6 +159,58 @@ app.post('/api/panel/admin/users', authMiddleware, adminMiddleware, async (c) =>
   } catch (e: any) {
     return c.json({ error: 'Username may already exist' }, 400);
   }
+});
+
+// Admin: Add balance to user
+app.post('/api/panel/admin/users/:id/balance', authMiddleware, adminMiddleware, async (c) => {
+  const userId = parseInt(c.req.param('id'));
+  const adminUser = c.get('user') as any;
+  const { amount, description } = await c.req.json();
+
+  const numAmount = parseFloat(amount);
+  if (isNaN(numAmount) || numAmount <= 0) {
+    return c.json({ error: '充值金额必须大于 0' }, 400);
+  }
+
+  const targetUser = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+  if (targetUser.length === 0) return c.json({ error: 'User not found' }, 404);
+
+  // Insert audit record
+  await db.insert(schema.balanceAudit).values({
+    userId,
+    amount: numAmount.toFixed(4),
+    description: description || '管理员充值',
+    operatorId: adminUser.id,
+  });
+
+  // Update cached balance
+  const newBalance = (parseFloat(targetUser[0]!.balance) + numAmount).toFixed(4);
+  await db.update(schema.users).set({ balance: newBalance }).where(eq(schema.users.id, userId));
+
+  return c.json({ success: true, balance: newBalance });
+});
+
+// Tenant: Get own balance
+app.get('/api/panel/balance', authMiddleware, async (c) => {
+  const user = c.get('user') as any;
+  const dbUser = await db.select({ balance: schema.users.balance }).from(schema.users).where(eq(schema.users.id, user.id)).limit(1);
+  if (dbUser.length === 0) return c.json({ error: 'User not found' }, 404);
+
+  // Get total consumed from usage_logs
+  const consumed = await db.select({
+    totalCost: sql<string>`coalesce(sum(${schema.usageLogs.costYuan}::numeric), 0)`,
+  }).from(schema.usageLogs).where(eq(schema.usageLogs.userId, user.id));
+
+  // Get total topped up from balance_audit
+  const topUps = await db.select({
+    totalTopUp: sql<string>`coalesce(sum(${schema.balanceAudit.amount}::numeric), 0)`,
+  }).from(schema.balanceAudit).where(eq(schema.balanceAudit.userId, user.id));
+
+  return c.json({
+    balance: dbUser[0]!.balance,
+    totalTopUp: parseFloat(String(topUps[0]?.totalTopUp || '0')).toFixed(4),
+    totalConsumed: parseFloat(String(consumed[0]?.totalCost || '0')).toFixed(4),
+  });
 });
 
 // Tenant: Get keys (exclude soft-deleted)
@@ -650,8 +702,14 @@ app.post('/api/v1/doubao/create', proxyAuthMiddleware, async (c) => {
   const startTime = Date.now();
   const clientIp = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown';
 
-  // Concurrency check
+  // Balance check
   const userId = keyRecord.userId;
+  const userRecord = await db.select({ balance: schema.users.balance }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+  if (userRecord.length > 0 && parseFloat(userRecord[0]!.balance) <= 0) {
+    return c.json({ error: '余额不足，请联系管理员充值' }, 403);
+  }
+
+  // Concurrency check
   let cc = concurrencyCache.get(userId);
   if (!cc) { cc = { limit: 3, active: 0 }; concurrencyCache.set(userId, cc); }
   if (cc.active >= cc.limit) {
@@ -780,6 +838,14 @@ app.post('/api/v1/doubao/get_result', proxyAuthMiddleware, async (c) => {
         if (existingLog[0]) {
           const ucc = concurrencyCache.get(existingLog[0].userId);
           if (ucc && ucc.active > 0) ucc.active--;
+          // Deduct balance on success
+          if (data.status === 'succeeded' && parseFloat(cost) > 0) {
+            const usr = await db.select({ balance: schema.users.balance }).from(schema.users).where(eq(schema.users.id, existingLog[0].userId)).limit(1);
+            if (usr[0]) {
+              const newBal = (parseFloat(usr[0].balance) - parseFloat(cost)).toFixed(4);
+              await db.update(schema.users).set({ balance: newBal }).where(eq(schema.users.id, existingLog[0].userId));
+            }
+          }
         }
       }
     }
@@ -853,6 +919,14 @@ cron.schedule('*/5 * * * *', async () => {
           // Decrement concurrency counter
           const ucc = concurrencyCache.get(log.userId);
           if (ucc && ucc.active > 0) ucc.active--;
+          // Deduct balance on success
+          if (data.status === 'succeeded' && parseFloat(cost) > 0) {
+            const usr = await db.select({ balance: schema.users.balance }).from(schema.users).where(eq(schema.users.id, log.userId)).limit(1);
+            if (usr[0]) {
+              const newBal = (parseFloat(usr[0].balance) - parseFloat(cost)).toFixed(4);
+              await db.update(schema.users).set({ balance: newBal }).where(eq(schema.users.id, log.userId));
+            }
+          }
           console.log(`Updated task ${log.taskId} status to ${data.status}, cost: ¥${cost}`);
         }
       }

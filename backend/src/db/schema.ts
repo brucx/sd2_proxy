@@ -6,6 +6,7 @@ export const users = pgTable('users', {
   passwordHash: text('password_hash').notNull(),
   role: varchar('role', { length: 50 }).notNull().default('tenant'), // 'admin' or 'tenant'
   concurrencyLimit: integer('concurrency_limit').notNull().default(3),
+  balance: text('balance').notNull().default('0'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -52,5 +53,14 @@ export const ipWhitelist = pgTable('ip_whitelist', {
   id: serial('id').primaryKey(),
   userId: integer('user_id').references(() => users.id).notNull(),
   ipAddress: varchar('ip_address', { length: 45 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const balanceAudit = pgTable('balance_audit', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  amount: text('amount').notNull(),
+  description: varchar('description', { length: 500 }).notNull().default(''),
+  operatorId: integer('operator_id').references(() => users.id).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
