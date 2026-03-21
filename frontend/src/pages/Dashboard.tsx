@@ -201,6 +201,12 @@ function Dashboard() {
     fetchData();
   };
 
+  const deleteKey = async (keyId: number) => {
+    if (!window.confirm('确定要删除该 Key 吗？删除后将无法恢复使用。')) return;
+    await api.delete(`/keys/${keyId}`);
+    fetchData();
+  };
+
   const createUser = async () => {
     if (!newUserName || !newUserPass) return;
     await api.post('/admin/users', { username: newUserName, password: newUserPass, role: 'tenant' });
@@ -823,7 +829,7 @@ function Dashboard() {
             {/* Desktop Table */}
             <table className="w-full text-left border-collapse hidden md:table">
               <thead>
-                <tr className="border-b bg-gray-50"><th className="p-2">Name</th><th className="p-2">API Key</th><th className="p-2">Created</th></tr>
+                <tr className="border-b bg-gray-50"><th className="p-2">Name</th><th className="p-2">API Key</th><th className="p-2">Created</th><th className="p-2">操作</th></tr>
               </thead>
               <tbody>
                 {keys.map(k => (
@@ -842,6 +848,9 @@ function Dashboard() {
                       </span>
                     </td>
                     <td className="p-2 text-sm">{new Date(k.createdAt).toLocaleDateString()}</td>
+                    <td className="p-2">
+                      <button onClick={() => deleteKey(k.id)} className="text-red-500 hover:underline text-sm">删除</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -863,6 +872,10 @@ function Dashboard() {
                     >
                       {copiedKeyId === k.id ? '✅ Copied' : '📋 Copy'}
                     </button>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t border-gray-200 mt-1">
+                    <span className="text-xs text-gray-500">{new Date(k.createdAt).toLocaleDateString()}</span>
+                    <button onClick={() => deleteKey(k.id)} className="text-red-500 hover:underline text-sm">删除</button>
                   </div>
                 </div>
               ))}

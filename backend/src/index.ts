@@ -6,7 +6,7 @@ import { cors } from 'hono/cors';
 import { config } from 'dotenv';
 import { db } from './db/index.js';
 import * as schema from './db/schema.js';
-import { eq, desc, sql, and, gte, lte } from 'drizzle-orm';
+import { eq, desc, sql, and, gte, lte, isNull } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import cron from 'node-cron';
@@ -161,10 +161,10 @@ app.post('/api/panel/admin/users', authMiddleware, adminMiddleware, async (c) =>
   }
 });
 
-// Tenant: Get keys
+// Tenant: Get keys (exclude soft-deleted)
 app.get('/api/panel/keys', authMiddleware, async (c) => {
   const user = c.get('user') as any;
-  const userKeys = await db.select().from(schema.keys).where(eq(schema.keys.userId, user.id));
+  const userKeys = await db.select().from(schema.keys).where(and(eq(schema.keys.userId, user.id), isNull(schema.keys.deletedAt)));
   return c.json(userKeys);
 });
 
@@ -177,6 +177,17 @@ app.post('/api/panel/keys', authMiddleware, async (c) => {
 
   await db.insert(schema.keys).values({ userId: user.id, apiKey, name });
   return c.json({ success: true, apiKey });
+});
+
+// Tenant: Soft-delete own key
+app.delete('/api/panel/keys/:id', authMiddleware, async (c) => {
+  const user = c.get('user') as any;
+  const keyId = parseInt(c.req.param('id'));
+  const keyRecord = await db.select().from(schema.keys).where(and(eq(schema.keys.id, keyId), eq(schema.keys.userId, user.id))).limit(1);
+  if (keyRecord.length === 0) return c.json({ error: 'Key not found' }, 404);
+
+  await db.update(schema.keys).set({ deletedAt: new Date(), enabled: false }).where(eq(schema.keys.id, keyId));
+  return c.json({ success: true });
 });
 
 // Tenant: Get Usage (with pagination & date filter)
@@ -594,8 +605,8 @@ const proxyAuthMiddleware = async (c: any, next: any) => {
     return c.json({ error: 'Invalid API Key' }, 401);
   }
 
-  if (!keyRecord[0]!.enabled) {
-    return c.json({ error: 'API Key is disabled' }, 403);
+  if (!keyRecord[0]!.enabled || keyRecord[0]!.deletedAt) {
+    return c.json({ error: 'Invalid API Key' }, 401);
   }
 
   const now = Date.now();

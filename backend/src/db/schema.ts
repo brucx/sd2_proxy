@@ -15,6 +15,7 @@ export const keys = pgTable('keys', {
   apiKey: varchar('api_key', { length: 255 }).notNull().unique(),
   name: varchar('name', { length: 255 }).notNull(),
   enabled: boolean('enabled').notNull().default(true),
+  deletedAt: timestamp('deleted_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
