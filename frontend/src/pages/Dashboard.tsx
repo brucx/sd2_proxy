@@ -19,6 +19,18 @@ function Dashboard() {
   const [newUserName, setNewUserName] = useState('');
   const [newUserPass, setNewUserPass] = useState('');
 
+  // Change own password state
+  const [showChangePwd, setShowChangePwd] = useState(false);
+  const [oldPwd, setOldPwd] = useState('');
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [pwdMsg, setPwdMsg] = useState('');
+
+  // Admin reset password state
+  const [resetUserId, setResetUserId] = useState<number | null>(null);
+  const [resetPwd, setResetPwd] = useState('');
+  const [resetMsg, setResetMsg] = useState('');
+
   useEffect(() => {
     if (!localStorage.getItem('token')) {
       navigate('/login');
@@ -67,6 +79,33 @@ function Dashboard() {
     fetchData();
   };
 
+  const changeOwnPassword = async () => {
+    setPwdMsg('');
+    if (!oldPwd || !newPwd) { setPwdMsg('请填写所有字段'); return; }
+    if (newPwd !== confirmPwd) { setPwdMsg('两次输入的新密码不一致'); return; }
+    try {
+      await api.put('/me/password', { oldPassword: oldPwd, newPassword: newPwd });
+      setPwdMsg('密码修改成功！');
+      setOldPwd(''); setNewPwd(''); setConfirmPwd('');
+      setTimeout(() => { setShowChangePwd(false); setPwdMsg(''); }, 1500);
+    } catch (err: any) {
+      setPwdMsg(err.response?.data?.error || '修改失败');
+    }
+  };
+
+  const adminResetPassword = async (userId: number) => {
+    setResetMsg('');
+    if (!resetPwd) { setResetMsg('请输入新密码'); return; }
+    try {
+      await api.put(`/admin/users/${userId}/password`, { newPassword: resetPwd });
+      setResetMsg('密码重置成功！');
+      setResetPwd('');
+      setTimeout(() => { setResetUserId(null); setResetMsg(''); }, 1500);
+    } catch (err: any) {
+      setResetMsg(err.response?.data?.error || '重置失败');
+    }
+  };
+
   const logout = () => {
     localStorage.clear();
     navigate('/login');
@@ -78,9 +117,33 @@ function Dashboard() {
         <h1 className="text-3xl font-bold text-gray-800">API Proxy Dashboard</h1>
         <div className="space-x-4">
           <Link to="/playground" className="text-blue-600 hover:underline font-medium">API Playground</Link>
+          <button onClick={() => setShowChangePwd(!showChangePwd)} className="text-indigo-600 hover:underline font-medium">修改密码</button>
           <button onClick={logout} className="text-red-500 hover:underline font-medium">Logout</button>
         </div>
       </div>
+
+      {/* Change Own Password Section */}
+      {showChangePwd && (
+        <div className="bg-white p-6 rounded-xl shadow-sm mb-8">
+          <h2 className="text-xl font-bold mb-4">修改密码</h2>
+          <div className="flex gap-4 items-end flex-wrap">
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">旧密码</label>
+              <input type="password" value={oldPwd} onChange={e => setOldPwd(e.target.value)} className="border px-3 py-2 rounded-md" />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">新密码</label>
+              <input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)} className="border px-3 py-2 rounded-md" />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">确认新密码</label>
+              <input type="password" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} className="border px-3 py-2 rounded-md" />
+            </div>
+            <button onClick={changeOwnPassword} className="bg-indigo-600 text-white px-4 py-2 rounded-md h-fit">确认修改</button>
+          </div>
+          {pwdMsg && <p className={`mt-3 text-sm font-medium ${pwdMsg.includes('成功') ? 'text-green-600' : 'text-red-500'}`}>{pwdMsg}</p>}
+        </div>
+      )}
 
       {role === 'admin' ? (
         <div className="space-y-8">
@@ -93,11 +156,27 @@ function Dashboard() {
             </div>
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b bg-gray-50"><th className="p-2">ID</th><th className="p-2">Username</th><th className="p-2">Role</th></tr>
+                <tr className="border-b bg-gray-50"><th className="p-2">ID</th><th className="p-2">Username</th><th className="p-2">Role</th><th className="p-2">操作</th></tr>
               </thead>
               <tbody>
                 {users.map(u => (
-                  <tr key={u.id} className="border-b"><td className="p-2">{u.id}</td><td className="p-2">{u.username}</td><td className="p-2">{u.role}</td></tr>
+                  <tr key={u.id} className="border-b">
+                    <td className="p-2">{u.id}</td>
+                    <td className="p-2">{u.username}</td>
+                    <td className="p-2">{u.role}</td>
+                    <td className="p-2">
+                      {resetUserId === u.id ? (
+                        <div className="flex gap-2 items-center">
+                          <input type="password" placeholder="新密码" value={resetPwd} onChange={e => setResetPwd(e.target.value)} className="border px-2 py-1 rounded-md text-sm w-32" />
+                          <button onClick={() => adminResetPassword(u.id)} className="bg-orange-500 text-white px-3 py-1 rounded-md text-sm">确认</button>
+                          <button onClick={() => { setResetUserId(null); setResetPwd(''); setResetMsg(''); }} className="text-gray-500 hover:underline text-sm">取消</button>
+                          {resetMsg && <span className={`text-xs ${resetMsg.includes('成功') ? 'text-green-600' : 'text-red-500'}`}>{resetMsg}</span>}
+                        </div>
+                      ) : (
+                        <button onClick={() => { setResetUserId(u.id); setResetPwd(''); setResetMsg(''); }} className="text-orange-600 hover:underline text-sm">重置密码</button>
+                      )}
+                    </td>
+                  </tr>
                 ))}
               </tbody>
             </table>
@@ -161,3 +240,4 @@ function Dashboard() {
 }
 
 export default Dashboard;
+

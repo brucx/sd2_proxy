@@ -70,6 +70,39 @@ app.get('/api/panel/me', authMiddleware, async (c) => {
   return c.json(userInfo[0]);
 });
 
+// Change own password
+app.put('/api/panel/me/password', authMiddleware, async (c) => {
+  const user = c.get('user') as any;
+  const { oldPassword, newPassword } = await c.req.json();
+
+  if (!oldPassword || !newPassword) return c.json({ error: 'Old password and new password are required' }, 400);
+
+  const dbUser = await db.select().from(schema.users).where(eq(schema.users.id, user.id)).limit(1);
+  if (dbUser.length === 0) return c.json({ error: 'User not found' }, 404);
+
+  const match = await bcrypt.compare(oldPassword, dbUser[0]!.passwordHash);
+  if (!match) return c.json({ error: 'Old password is incorrect' }, 400);
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  await db.update(schema.users).set({ passwordHash }).where(eq(schema.users.id, user.id));
+  return c.json({ success: true });
+});
+
+// Admin: Reset user password
+app.put('/api/panel/admin/users/:id/password', authMiddleware, adminMiddleware, async (c) => {
+  const userId = parseInt(c.req.param('id'));
+  const { newPassword } = await c.req.json();
+
+  if (!newPassword) return c.json({ error: 'New password is required' }, 400);
+
+  const targetUser = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+  if (targetUser.length === 0) return c.json({ error: 'User not found' }, 404);
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  await db.update(schema.users).set({ passwordHash }).where(eq(schema.users.id, userId));
+  return c.json({ success: true });
+});
+
 // Admin: Get all users
 app.get('/api/panel/admin/users', authMiddleware, adminMiddleware, async (c) => {
   const usersList = await db.select({ id: schema.users.id, username: schema.users.username, role: schema.users.role, createdAt: schema.users.createdAt }).from(schema.users);
