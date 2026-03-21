@@ -53,6 +53,7 @@ app.use('/api/*', async (c, next) => {
 const JWT_SECRET = process.env.JWT_SECRET!;
 const UPSTREAM_URL = process.env.UPSTREAM_URL || 'http://127.0.0.1';
 const ARK_API_KEY = process.env.ARK_API_KEY || '';
+const PENDING_TIMEOUT_MS = (parseInt(process.env.PENDING_TIMEOUT_MINUTES || '20')) * 60 * 1000;
 
 // Upstream pricing (CNY per million tokens)
 const PRICE_WITH_VIDEO = parseFloat(process.env.PRICE_WITH_VIDEO || '28');
@@ -1056,6 +1057,21 @@ cron.schedule('*/5 * * * *', async () => {
     for (let i = 0; i < pendingLogs.length; i += CRON_BATCH_SIZE) {
       const batch = pendingLogs.slice(i, i + CRON_BATCH_SIZE);
       await Promise.allSettled(batch.map(log => processPendingTask(log)));
+    }
+
+    // Auto-expire stuck pending tasks exceeding timeout threshold
+    const now = Date.now();
+    const stillPending = await db.select().from(schema.usageLogs).where(eq(schema.usageLogs.status, 'pending'));
+    for (const log of stillPending) {
+      const age = now - new Date(log.createdAt).getTime();
+      if (age > PENDING_TIMEOUT_MS) {
+        await db.update(schema.usageLogs)
+          .set({ status: 'expired', updatedAt: new Date() })
+          .where(eq(schema.usageLogs.id, log.id));
+        const ucc = concurrencyCache.get(log.userId);
+        if (ucc && ucc.active > 0) ucc.active--;
+        console.log(`Auto-expired stuck task ${log.taskId} (pending ${Math.round(age / 60000)}min), decremented concurrency for user ${log.userId}`);
+      }
     }
   } catch (error) {
     console.error('Cron Job Error:', error);
