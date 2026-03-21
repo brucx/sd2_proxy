@@ -80,7 +80,7 @@ app.post('/api/panel/login', async (c) => {
   if (!match) return c.json({ error: 'Invalid credentials' }, 401);
 
   const token = jwt.sign({ id: user[0].id, role: user[0].role }, JWT_SECRET, { expiresIn: '24h' });
-  return c.json({ token, role: user[0].role });
+  return c.json({ token, role: user[0].role, username: user[0].username });
 });
 
 // Get current user info

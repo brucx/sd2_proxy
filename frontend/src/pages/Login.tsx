@@ -16,6 +16,7 @@ function Login() {
       const { data } = await api.post('/login', { username, password });
       localStorage.setItem('token', data.token);
       localStorage.setItem('role', data.role);
+      localStorage.setItem('username', data.username);
       navigate('/dashboard');
     } catch (err) {
       setError('Invalid username or password');

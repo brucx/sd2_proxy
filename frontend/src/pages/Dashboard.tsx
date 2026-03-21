@@ -324,7 +324,10 @@ function Dashboard() {
   return (
     <div className="max-w-6xl mx-auto p-4 sm:p-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 bg-white p-4 rounded-xl shadow-sm">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">API Proxy Dashboard</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">API Proxy Dashboard</h1>
+          <span className="text-sm text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">{localStorage.getItem('username') || ''}</span>
+        </div>
         <div className="flex flex-wrap gap-4">
           <Link to="/playground" className="text-blue-600 hover:underline font-medium">API Playground</Link>
           <button onClick={() => setShowChangePwd(!showChangePwd)} className="text-indigo-600 hover:underline font-medium">修改密码</button>
