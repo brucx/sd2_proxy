@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, boolean, varchar } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, timestamp, boolean, varchar, index } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
@@ -18,7 +18,9 @@ export const keys = pgTable('keys', {
   enabled: boolean('enabled').notNull().default(true),
   deletedAt: timestamp('deleted_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('keys_user_id_idx').on(table.userId),
+]);
 
 export const usageLogs = pgTable('usage_logs', {
   id: serial('id').primaryKey(),
@@ -33,7 +35,12 @@ export const usageLogs = pgTable('usage_logs', {
   resultData: text('result_data'), // 任务完成时的上游完整响应 JSON
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('usage_logs_user_id_idx').on(table.userId),
+  index('usage_logs_status_idx').on(table.status),
+  index('usage_logs_task_id_idx').on(table.taskId),
+  index('usage_logs_created_at_idx').on(table.createdAt),
+]);
 
 export const requestLogs = pgTable('request_logs', {
   id: serial('id').primaryKey(),
@@ -47,14 +54,19 @@ export const requestLogs = pgTable('request_logs', {
   durationMs: integer('duration_ms'),
   ipAddress: varchar('ip_address', { length: 100 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('request_logs_user_id_idx').on(table.userId),
+  index('request_logs_created_at_idx').on(table.createdAt),
+]);
 
 export const ipWhitelist = pgTable('ip_whitelist', {
   id: serial('id').primaryKey(),
   userId: integer('user_id').references(() => users.id).notNull(),
   ipAddress: varchar('ip_address', { length: 45 }).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('ip_whitelist_user_id_idx').on(table.userId),
+]);
 
 export const balanceAudit = pgTable('balance_audit', {
   id: serial('id').primaryKey(),
@@ -63,4 +75,6 @@ export const balanceAudit = pgTable('balance_audit', {
   description: varchar('description', { length: 500 }).notNull().default(''),
   operatorId: integer('operator_id').references(() => users.id).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('balance_audit_user_id_idx').on(table.userId),
+]);

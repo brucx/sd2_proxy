@@ -13,6 +13,15 @@ import cron from 'node-cron';
 
 config();
 
+// -- Environment Variable Validation --
+const requiredEnvVars = ['JWT_SECRET'] as const;
+for (const envVar of requiredEnvVars) {
+  if (!process.env[envVar]) {
+    console.error(`FATAL: Environment variable ${envVar} is not set.`);
+    process.exit(1);
+  }
+}
+
 const app = new Hono<{
   Variables: {
     user: any;
@@ -21,7 +30,18 @@ const app = new Hono<{
 }>();
 
 app.use('*', logger());
-app.use('*', cors());
+app.use('*', cors({
+  origin: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',').map(s => s.trim()) : '*',
+}));
+
+// Security response headers
+app.use('*', async (c, next) => {
+  await next();
+  c.header('X-Content-Type-Options', 'nosniff');
+  c.header('X-Frame-Options', 'DENY');
+  c.header('X-XSS-Protection', '1; mode=block');
+  c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+});
 
 // Disable caching for all API responses
 app.use('/api/*', async (c, next) => {
@@ -30,9 +50,9 @@ app.use('/api/*', async (c, next) => {
   c.header('Pragma', 'no-cache');
 });
 
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
-const UPSTREAM_URL = process.env.UPSTREAM_URL || 'http://118.196.64.1';
-const ARK_API_KEY = process.env.ARK_API_KEY || 'test-ark-key';
+const JWT_SECRET = process.env.JWT_SECRET!;
+const UPSTREAM_URL = process.env.UPSTREAM_URL || 'http://127.0.0.1';
+const ARK_API_KEY = process.env.ARK_API_KEY || '';
 
 // Upstream pricing (CNY per million tokens)
 const PRICE_WITH_VIDEO = parseFloat(process.env.PRICE_WITH_VIDEO || '28');
@@ -74,11 +94,31 @@ const adminMiddleware = async (c: any, next: any) => {
   await next();
 };
 
+// -- Login Brute-force Protection --
+const loginAttempts: Record<string, { count: number; resetTime: number }> = {};
+const LOGIN_MAX_ATTEMPTS = 5; // 5 attempts per minute per IP
+
 // -- Panel API --
 
 // Login
 app.post('/api/panel/login', async (c) => {
+  // Rate limit login by IP
+  const loginIp = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || 'unknown';
+  const now = Date.now();
+  let attempt = loginAttempts[loginIp];
+  if (!attempt || attempt.resetTime < now) {
+    attempt = { count: 0, resetTime: now + 60000 };
+    loginAttempts[loginIp] = attempt;
+  }
+  if (attempt.count >= LOGIN_MAX_ATTEMPTS) {
+    return c.json({ error: '登录尝试过于频繁，请稍后再试' }, 429);
+  }
+  attempt.count++;
+
   const { username, password } = await c.req.json();
+
+  if (!username || !password) return c.json({ error: 'Invalid credentials' }, 401);
+
   const user = await db.select().from(schema.users).where(eq(schema.users.username, username)).limit(1);
 
   if (!user || user.length === 0 || !user[0]) return c.json({ error: 'Invalid credentials' }, 401);
@@ -103,6 +143,7 @@ app.put('/api/panel/me/password', authMiddleware, async (c) => {
   const { oldPassword, newPassword } = await c.req.json();
 
   if (!oldPassword || !newPassword) return c.json({ error: 'Old password and new password are required' }, 400);
+  if (typeof newPassword !== 'string' || newPassword.length < 6) return c.json({ error: '密码长度不能少于 6 位' }, 400);
 
   const dbUser = await db.select().from(schema.users).where(eq(schema.users.id, user.id)).limit(1);
   if (dbUser.length === 0) return c.json({ error: 'User not found' }, 404);
@@ -121,6 +162,7 @@ app.put('/api/panel/admin/users/:id/password', authMiddleware, adminMiddleware, 
   const { newPassword } = await c.req.json();
 
   if (!newPassword) return c.json({ error: 'New password is required' }, 400);
+  if (typeof newPassword !== 'string' || newPassword.length < 6) return c.json({ error: '密码长度不能少于 6 位' }, 400);
 
   const targetUser = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
   if (targetUser.length === 0) return c.json({ error: 'User not found' }, 404);
@@ -159,6 +201,8 @@ app.put('/api/panel/admin/users/:id/concurrency', authMiddleware, adminMiddlewar
 // Admin: Create user
 app.post('/api/panel/admin/users', authMiddleware, adminMiddleware, async (c) => {
   const { username, password, role } = await c.req.json();
+  if (!username || !password) return c.json({ error: 'Username and password are required' }, 400);
+  if (typeof password !== 'string' || password.length < 6) return c.json({ error: '密码长度不能少于 6 位' }, 400);
   const passwordHash = await bcrypt.hash(password, 10);
   try {
     await db.insert(schema.users).values({ username, passwordHash, role: role || 'tenant' });
@@ -190,11 +234,14 @@ app.post('/api/panel/admin/users/:id/balance', authMiddleware, adminMiddleware, 
     operatorId: adminUser.id,
   });
 
-  // Update cached balance
-  const newBalance = (parseFloat(targetUser[0]!.balance) + numAmount).toFixed(4);
-  await db.update(schema.users).set({ balance: newBalance }).where(eq(schema.users.id, userId));
+  // Atomic balance update — prevents race conditions
+  await db.update(schema.users)
+    .set({ balance: sql`(${schema.users.balance}::numeric + ${numAmount})::text` })
+    .where(eq(schema.users.id, userId));
 
-  return c.json({ success: true, balance: newBalance });
+  // Read updated balance for response
+  const updatedUser = await db.select({ balance: schema.users.balance }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+  return c.json({ success: true, balance: updatedUser[0]?.balance || '0' });
 });
 
 // Tenant: Get own balance
@@ -397,7 +444,8 @@ app.get('/api/panel/usage/export', authMiddleware, async (c) => {
 
     const logs = await db.select().from(schema.usageLogs)
       .where(and(...conditions))
-      .orderBy(desc(schema.usageLogs.createdAt));
+      .orderBy(desc(schema.usageLogs.createdAt))
+      .limit(50000);
 
     const header = 'ID,KeyID,Endpoint,TaskID,Tokens,InputType,UnitPrice,Cost(CNY),Status,CreatedAt';
     const rows = logs.map(u =>
@@ -516,7 +564,8 @@ app.get('/api/panel/admin/usage/export', authMiddleware, adminMiddleware, async 
       })
       .from(schema.usageLogs)
       .innerJoin(schema.users, eq(schema.usageLogs.userId, schema.users.id))
-      .orderBy(desc(schema.usageLogs.createdAt));
+      .orderBy(desc(schema.usageLogs.createdAt))
+      .limit(50000);
 
     const logs = where ? await (query as any).where(where) : await query;
 
@@ -647,8 +696,8 @@ app.post('/api/panel/whitelist', authMiddleware, async (c) => {
     return c.json({ error: 'ipAddress is required' }, 400);
   }
 
-  // Basic IP format validation (IPv4 & IPv6)
-  const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
+  // Improved IPv4 validation (validates octets 0-255)
+  const ipv4Regex = /^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)$/;
   const ipv6Regex = /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/;
   const trimmedIp = ipAddress.trim();
   if (!ipv4Regex.test(trimmedIp) && !ipv6Regex.test(trimmedIp)) {
@@ -689,8 +738,23 @@ app.delete('/api/panel/whitelist/:id', authMiddleware, async (c) => {
 const rateLimits: Record<string, { count: number, resetTime: number }> = {};
 const RATE_LIMIT_MAX = 60; // 60 requests per minute
 
+// Periodically clean up expired rate limit and login attempt entries (every 5 minutes)
+setInterval(() => {
+  const now = Date.now();
+  for (const key of Object.keys(rateLimits)) {
+    if (rateLimits[key] && rateLimits[key].resetTime < now) delete rateLimits[key];
+  }
+  for (const key of Object.keys(loginAttempts)) {
+    if (loginAttempts[key] && loginAttempts[key].resetTime < now) delete loginAttempts[key];
+  }
+}, 5 * 60 * 1000);
+
 // In-memory concurrency tracking per user
 const concurrencyCache: Map<number, { limit: number, active: number }> = new Map();
+
+// API Key cache with TTL to avoid per-request DB queries
+const keyCache: Map<string, { record: any; whitelist: any[]; expiry: number }> = new Map();
+const KEY_CACHE_TTL = 60_000; // 60 seconds
 
 const proxyAuthMiddleware = async (c: any, next: any) => {
   const authHeader = c.req.header('Authorization');
@@ -699,17 +763,24 @@ const proxyAuthMiddleware = async (c: any, next: any) => {
   }
 
   const apiKey = authHeader.split(' ')[1];
-  const keyRecord = await db.select().from(schema.keys).where(eq(schema.keys.apiKey, apiKey)).limit(1);
-
-  if (keyRecord.length === 0) {
-    return c.json({ error: 'Invalid API Key' }, 401);
-  }
-
-  if (!keyRecord[0]!.enabled || keyRecord[0]!.deletedAt) {
-    return c.json({ error: 'Invalid API Key' }, 401);
-  }
-
   const now = Date.now();
+
+  // Check cache first
+  let cached = keyCache.get(apiKey);
+  if (!cached || cached.expiry < now) {
+    const keyRecord = await db.select().from(schema.keys).where(eq(schema.keys.apiKey, apiKey)).limit(1);
+    if (keyRecord.length === 0) {
+      return c.json({ error: 'Invalid API Key' }, 401);
+    }
+    if (!keyRecord[0]!.enabled || keyRecord[0]!.deletedAt) {
+      return c.json({ error: 'Invalid API Key' }, 401);
+    }
+    const whitelist = await db.select().from(schema.ipWhitelist).where(eq(schema.ipWhitelist.userId, keyRecord[0]!.userId));
+    cached = { record: keyRecord[0], whitelist, expiry: now + KEY_CACHE_TTL };
+    keyCache.set(apiKey, cached);
+  }
+
+  // Rate limiting
   let limit = rateLimits[apiKey];
   if (!limit || limit.resetTime < now) {
     limit = { count: 0, resetTime: now + 60000 };
@@ -722,17 +793,16 @@ const proxyAuthMiddleware = async (c: any, next: any) => {
 
   limit.count++;
 
-  // IP Whitelist check
-  const clientIp = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || 'unknown';
-  const whitelist = await db.select().from(schema.ipWhitelist).where(eq(schema.ipWhitelist.userId, keyRecord[0]!.userId));
-  if (whitelist.length > 0) {
-    const allowed = whitelist.some(w => w.ipAddress === clientIp);
+  // IP Whitelist check (using cached whitelist)
+  if (cached.whitelist.length > 0) {
+    const clientIp = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || 'unknown';
+    const allowed = cached.whitelist.some((w: any) => w.ipAddress === clientIp);
     if (!allowed) {
       return c.json({ error: `IP ${clientIp} is not in the whitelist` }, 403);
     }
   }
 
-  c.set('keyRecord', keyRecord[0]);
+  c.set('keyRecord', cached.record);
   await next();
 };
 
@@ -886,13 +956,11 @@ app.post('/api/v1/doubao/get_result', proxyAuthMiddleware, async (c) => {
         if (existingLog[0]) {
           const ucc = concurrencyCache.get(existingLog[0].userId);
           if (ucc && ucc.active > 0) ucc.active--;
-          // Deduct balance on success
+          // Atomic balance deduction on success
           if (data.status === 'succeeded' && parseFloat(cost) > 0) {
-            const usr = await db.select({ balance: schema.users.balance }).from(schema.users).where(eq(schema.users.id, existingLog[0].userId)).limit(1);
-            if (usr[0]) {
-              const newBal = (parseFloat(usr[0].balance) - parseFloat(cost)).toFixed(4);
-              await db.update(schema.users).set({ balance: newBal }).where(eq(schema.users.id, existingLog[0].userId));
-            }
+            await db.update(schema.users)
+              .set({ balance: sql`(${schema.users.balance}::numeric - ${parseFloat(cost)})::text` })
+              .where(eq(schema.users.id, existingLog[0].userId));
           }
         }
       }
@@ -932,52 +1000,62 @@ app.post('/api/v1/doubao/get_result', proxyAuthMiddleware, async (c) => {
 });
 
 // -- Cron Job --
-// Poll pending tasks every 5 minutes
+// Poll pending tasks every 5 minutes (batched concurrent processing)
+const CRON_BATCH_SIZE = 10;
+
+const processPendingTask = async (log: any) => {
+  try {
+    if (!log.taskId) return;
+
+    const upstreamRes = await fetch(`${UPSTREAM_URL}/api/v1/doubao/get_result`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ARK_API_KEY}`
+      },
+      body: JSON.stringify({ id: log.taskId })
+    });
+
+    if (upstreamRes.ok) {
+      const data: any = await upstreamRes.json();
+      if (['succeeded', 'failed', 'cancelled', 'expired'].includes(data.status)) {
+        const completionTokens = data.usage?.completion_tokens || 0;
+        const cost = data.status === 'succeeded' ? calculateCost(completionTokens, log.hasVideoInput) : '0';
+        await db.update(schema.usageLogs)
+          .set({
+            status: data.status,
+            completionTokens: completionTokens,
+            costYuan: cost,
+            resultData: JSON.stringify(data),
+            updatedAt: new Date()
+          })
+          .where(eq(schema.usageLogs.id, log.id));
+        // Decrement concurrency counter
+        const ucc = concurrencyCache.get(log.userId);
+        if (ucc && ucc.active > 0) ucc.active--;
+        // Atomic balance deduction on success
+        if (data.status === 'succeeded' && parseFloat(cost) > 0) {
+          await db.update(schema.users)
+            .set({ balance: sql`(${schema.users.balance}::numeric - ${parseFloat(cost)})::text` })
+            .where(eq(schema.users.id, log.userId));
+        }
+        console.log(`Updated task ${log.taskId} status to ${data.status}, cost: ¥${cost}`);
+      }
+    }
+  } catch (err) {
+    console.error(`Cron: Error processing task ${log.taskId}:`, err);
+  }
+};
+
 cron.schedule('*/5 * * * *', async () => {
   console.log('Running Cron Job to poll pending tasks...');
   try {
     const pendingLogs = await db.select().from(schema.usageLogs).where(eq(schema.usageLogs.status, 'pending'));
 
-    for (const log of pendingLogs) {
-      if (!log.taskId) continue;
-
-      const upstreamRes = await fetch(`${UPSTREAM_URL}/api/v1/doubao/get_result`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${ARK_API_KEY}`
-        },
-        body: JSON.stringify({ id: log.taskId })
-      });
-
-      if (upstreamRes.ok) {
-        const data: any = await upstreamRes.json();
-        if (['succeeded', 'failed', 'cancelled', 'expired'].includes(data.status)) {
-          const completionTokens = data.usage?.completion_tokens || 0;
-          const cost = data.status === 'succeeded' ? calculateCost(completionTokens, log.hasVideoInput) : '0';
-          await db.update(schema.usageLogs)
-            .set({
-              status: data.status,
-              completionTokens: completionTokens,
-              costYuan: cost,
-              resultData: JSON.stringify(data),
-              updatedAt: new Date()
-            })
-            .where(eq(schema.usageLogs.id, log.id));
-          // Decrement concurrency counter
-          const ucc = concurrencyCache.get(log.userId);
-          if (ucc && ucc.active > 0) ucc.active--;
-          // Deduct balance on success
-          if (data.status === 'succeeded' && parseFloat(cost) > 0) {
-            const usr = await db.select({ balance: schema.users.balance }).from(schema.users).where(eq(schema.users.id, log.userId)).limit(1);
-            if (usr[0]) {
-              const newBal = (parseFloat(usr[0].balance) - parseFloat(cost)).toFixed(4);
-              await db.update(schema.users).set({ balance: newBal }).where(eq(schema.users.id, log.userId));
-            }
-          }
-          console.log(`Updated task ${log.taskId} status to ${data.status}, cost: ¥${cost}`);
-        }
-      }
+    // Process in batches of CRON_BATCH_SIZE concurrently
+    for (let i = 0; i < pendingLogs.length; i += CRON_BATCH_SIZE) {
+      const batch = pendingLogs.slice(i, i + CRON_BATCH_SIZE);
+      await Promise.allSettled(batch.map(log => processPendingTask(log)));
     }
   } catch (error) {
     console.error('Cron Job Error:', error);
@@ -989,9 +1067,10 @@ const setupInitialAdmin = async () => {
   try {
     const admin = await db.select().from(schema.users).where(eq(schema.users.username, 'admin')).limit(1);
     if (admin.length === 0) {
-      const passwordHash = await bcrypt.hash('admin123', 10);
+      const adminPwd = process.env.ADMIN_DEFAULT_PASSWORD || 'admin123';
+      const passwordHash = await bcrypt.hash(adminPwd, 10);
       await db.insert(schema.users).values({ username: 'admin', passwordHash, role: 'admin' });
-      console.log('Initial admin created (admin/admin123)');
+      console.log('Initial admin created (admin/' + (process.env.ADMIN_DEFAULT_PASSWORD ? '***' : 'admin123') + ')');
     }
   } catch (e) {
     console.error('Error setting up initial admin', e);
