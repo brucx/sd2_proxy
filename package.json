@@ -1,0 +1,11 @@
+{
+  "name": "apiproxy",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "cd backend && npm start",
+    "dev": "cd backend && npm run dev",
+    "build": "cd frontend && npm run build && cd ../backend && npm run build",
+    "db:push": "cd backend && npm run db:push"
+  }
+}
