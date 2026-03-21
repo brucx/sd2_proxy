@@ -7,8 +7,8 @@ import { config } from 'dotenv';
 import { db } from './db/index.js';
 import * as schema from './db/schema.js';
 import { eq } from 'drizzle-orm';
-import * as bcrypt from 'bcrypt';
-import * as jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 import cron from 'node-cron';
 
 config();
@@ -207,14 +207,14 @@ app.post('/api/v1/doubao/get_result', proxyAuthMiddleware, async (c) => {
     if (upstreamRes.ok && data.status) {
       // Update usage log if status changed to succeeded or failed
       if (data.status === 'succeeded' || data.status === 'failed') {
-          const completionTokens = data.usage?.completion_tokens || 0;
-          await db.update(schema.usageLogs)
-            .set({
-              status: data.status,
-              completionTokens: completionTokens,
-              updatedAt: new Date()
-            })
-            .where(eq(schema.usageLogs.taskId, data.id));
+        const completionTokens = data.usage?.completion_tokens || 0;
+        await db.update(schema.usageLogs)
+          .set({
+            status: data.status,
+            completionTokens: completionTokens,
+            updatedAt: new Date()
+          })
+          .where(eq(schema.usageLogs.taskId, data.id));
       }
     }
 
@@ -267,16 +267,16 @@ cron.schedule('*/5 * * * *', async () => {
 
 // Setup Initial Admin (Run once)
 const setupInitialAdmin = async () => {
-    try {
-        const admin = await db.select().from(schema.users).where(eq(schema.users.username, 'admin')).limit(1);
-        if (admin.length === 0) {
-            const passwordHash = await bcrypt.hash('admin123', 10);
-            await db.insert(schema.users).values({ username: 'admin', passwordHash, role: 'admin' });
-            console.log('Initial admin created (admin/admin123)');
-        }
-    } catch (e) {
-        console.error('Error setting up initial admin', e);
+  try {
+    const admin = await db.select().from(schema.users).where(eq(schema.users.username, 'admin')).limit(1);
+    if (admin.length === 0) {
+      const passwordHash = await bcrypt.hash('admin123', 10);
+      await db.insert(schema.users).values({ username: 'admin', passwordHash, role: 'admin' });
+      console.log('Initial admin created (admin/admin123)');
     }
+  } catch (e) {
+    console.error('Error setting up initial admin', e);
+  }
 }
 setupInitialAdmin();
 
