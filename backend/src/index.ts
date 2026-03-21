@@ -125,8 +125,28 @@ app.put('/api/panel/admin/users/:id/password', authMiddleware, adminMiddleware, 
 
 // Admin: Get all users
 app.get('/api/panel/admin/users', authMiddleware, adminMiddleware, async (c) => {
-  const usersList = await db.select({ id: schema.users.id, username: schema.users.username, role: schema.users.role, createdAt: schema.users.createdAt }).from(schema.users);
-  return c.json(usersList);
+  const usersList = await db.select({ id: schema.users.id, username: schema.users.username, role: schema.users.role, concurrencyLimit: schema.users.concurrencyLimit, createdAt: schema.users.createdAt }).from(schema.users);
+  return c.json(usersList.map(u => ({
+    ...u,
+    activeConcurrency: concurrencyCache.get(u.id)?.active || 0,
+  })));
+});
+
+// Admin: Update user concurrency limit
+app.put('/api/panel/admin/users/:id/concurrency', authMiddleware, adminMiddleware, async (c) => {
+  const userId = parseInt(c.req.param('id'));
+  const { concurrencyLimit } = await c.req.json();
+  if (typeof concurrencyLimit !== 'number' || concurrencyLimit < 1 || concurrencyLimit > 100) {
+    return c.json({ error: '并发数必须在 1-100 之间' }, 400);
+  }
+  const targetUser = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+  if (targetUser.length === 0) return c.json({ error: 'User not found' }, 404);
+  await db.update(schema.users).set({ concurrencyLimit }).where(eq(schema.users.id, userId));
+  // Update cache
+  const cc = concurrencyCache.get(userId);
+  if (cc) { cc.limit = concurrencyLimit; }
+  else { concurrencyCache.set(userId, { limit: concurrencyLimit, active: 0 }); }
+  return c.json({ success: true });
 });
 
 // Admin: Create user
@@ -558,6 +578,9 @@ app.delete('/api/panel/whitelist/:id', authMiddleware, async (c) => {
 const rateLimits: Record<string, { count: number, resetTime: number }> = {};
 const RATE_LIMIT_MAX = 60; // 60 requests per minute
 
+// In-memory concurrency tracking per user
+const concurrencyCache: Map<number, { limit: number, active: number }> = new Map();
+
 const proxyAuthMiddleware = async (c: any, next: any) => {
   const authHeader = c.req.header('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -616,6 +639,15 @@ app.post('/api/v1/doubao/create', proxyAuthMiddleware, async (c) => {
   const startTime = Date.now();
   const clientIp = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown';
 
+  // Concurrency check
+  const userId = keyRecord.userId;
+  let cc = concurrencyCache.get(userId);
+  if (!cc) { cc = { limit: 3, active: 0 }; concurrencyCache.set(userId, cc); }
+  if (cc.active >= cc.limit) {
+    return c.json({ error: `并发数已达上限 (${cc.limit})，请稍后重试` }, 429);
+  }
+  cc.active++;
+
   // Save original model name for logging before mapping
   const originalBody = JSON.stringify(body);
 
@@ -623,6 +655,7 @@ app.post('/api/v1/doubao/create', proxyAuthMiddleware, async (c) => {
   const userModel = body.model;
   const mappedModel = MODEL_MAP[userModel];
   if (!mappedModel) {
+    cc.active--; // Rollback concurrency on validation error
     return c.json({
       error: `Unsupported model: "${userModel}". Supported models: ${Object.keys(MODEL_MAP).join(', ')}`
     }, 400);
@@ -674,6 +707,7 @@ app.post('/api/v1/doubao/create', proxyAuthMiddleware, async (c) => {
     return c.json(data);
   } catch (error) {
     console.error('Proxy Create Error:', error);
+    cc.active--; // Rollback concurrency on error
     // Log failed request
     db.insert(schema.requestLogs).values({
       userId: keyRecord.userId,
@@ -730,6 +764,12 @@ app.post('/api/v1/doubao/get_result', proxyAuthMiddleware, async (c) => {
             updatedAt: new Date()
           })
           .where(eq(schema.usageLogs.taskId, data.id));
+
+        // Decrement concurrency counter
+        if (existingLog[0]) {
+          const ucc = concurrencyCache.get(existingLog[0].userId);
+          if (ucc && ucc.active > 0) ucc.active--;
+        }
       }
     }
 
@@ -799,6 +839,9 @@ cron.schedule('*/5 * * * *', async () => {
               updatedAt: new Date()
             })
             .where(eq(schema.usageLogs.id, log.id));
+          // Decrement concurrency counter
+          const ucc = concurrencyCache.get(log.userId);
+          if (ucc && ucc.active > 0) ucc.active--;
           console.log(`Updated task ${log.taskId} status to ${data.status}, cost: ¥${cost}`);
         }
       }
@@ -821,7 +864,24 @@ const setupInitialAdmin = async () => {
     console.error('Error setting up initial admin', e);
   }
 }
-setupInitialAdmin();
+
+// Load concurrency cache from database on startup
+const loadConcurrencyCache = async () => {
+  try {
+    const allUsers = await db.select({ id: schema.users.id, concurrencyLimit: schema.users.concurrencyLimit }).from(schema.users);
+    for (const u of allUsers) {
+      const pending = await db.select({ count: sql<number>`count(*)` })
+        .from(schema.usageLogs)
+        .where(and(eq(schema.usageLogs.userId, u.id), eq(schema.usageLogs.status, 'pending')));
+      concurrencyCache.set(u.id, { limit: u.concurrencyLimit, active: Number(pending[0]?.count || 0) });
+    }
+    console.log('Concurrency cache loaded for', concurrencyCache.size, 'users');
+  } catch (e) {
+    console.error('Error loading concurrency cache', e);
+  }
+};
+
+setupInitialAdmin().then(() => loadConcurrencyCache());
 
 // Serve Frontend Static Files
 app.use('/*', serveStatic({ root: '../frontend/dist' }));

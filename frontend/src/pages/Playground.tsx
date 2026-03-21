@@ -71,11 +71,11 @@ function Playground() {
   }, []);
 
   const sampleCreateResponse = {
-    id: "task_7c5ab7c691c54146"
+    id: "task_abcdefg1234567"
   };
 
   const sampleGetResultResponse = {
-    id: "task_7c5ab7c691c54146",
+    id: "task_abcdefg1234567",
     model: "doubao-seedance-2-0-260128",
     status: "succeeded",
     error: null,

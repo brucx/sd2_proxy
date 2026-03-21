@@ -5,6 +5,7 @@ export const users = pgTable('users', {
   username: varchar('username', { length: 255 }).notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   role: varchar('role', { length: 50 }).notNull().default('tenant'), // 'admin' or 'tenant'
+  concurrencyLimit: integer('concurrency_limit').notNull().default(3),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

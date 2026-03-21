@@ -49,6 +49,10 @@ function Dashboard() {
   const [resetPwd, setResetPwd] = useState('');
   const [resetMsg, setResetMsg] = useState('');
 
+  // Admin concurrency limit editing state
+  const [editConcurrencyUserId, setEditConcurrencyUserId] = useState<number | null>(null);
+  const [editConcurrencyValue, setEditConcurrencyValue] = useState('');
+
   // Request logs state (admin only)
   const [requestLogs, setRequestLogs] = useState<any[]>([]);
   const [requestLogsTotal, setRequestLogsTotal] = useState(0);
@@ -245,6 +249,19 @@ function Dashboard() {
     }
   };
 
+  const updateConcurrencyLimit = async (userId: number) => {
+    const val = parseInt(editConcurrencyValue);
+    if (isNaN(val) || val < 1 || val > 100) { alert('并发数必须在 1-100 之间'); return; }
+    try {
+      await api.put(`/admin/users/${userId}/concurrency`, { concurrencyLimit: val });
+      setEditConcurrencyUserId(null);
+      setEditConcurrencyValue('');
+      fetchData();
+    } catch (err: any) {
+      alert(err.response?.data?.error || '修改失败');
+    }
+  };
+
   const addWhitelistIp = async () => {
     setWhitelistMsg('');
     if (!newWhitelistIp.trim()) { setWhitelistMsg('请输入 IP 地址'); return; }
@@ -319,7 +336,7 @@ function Dashboard() {
             {/* Desktop Table */}
             <table className="w-full text-left border-collapse hidden md:table">
               <thead>
-                <tr className="border-b bg-gray-50"><th className="p-2">ID</th><th className="p-2">Username</th><th className="p-2">Role</th><th className="p-2">操作</th></tr>
+                <tr className="border-b bg-gray-50"><th className="p-2">ID</th><th className="p-2">Username</th><th className="p-2">Role</th><th className="p-2">并发限制</th><th className="p-2">操作</th></tr>
               </thead>
               <tbody>
                 {users.map(u => (
@@ -327,6 +344,24 @@ function Dashboard() {
                     <td className="p-2">{u.id}</td>
                     <td className="p-2">{u.username}</td>
                     <td className="p-2">{u.role}</td>
+                    <td className="p-2">
+                      {editConcurrencyUserId === u.id ? (
+                        <div className="flex gap-1 items-center">
+                          <input type="number" min="1" max="100" value={editConcurrencyValue} onChange={e => setEditConcurrencyValue(e.target.value)} className="border px-2 py-1 rounded-md text-sm w-16" />
+                          <button onClick={() => updateConcurrencyLimit(u.id)} className="bg-blue-500 text-white px-2 py-1 rounded-md text-xs">保存</button>
+                          <button onClick={() => setEditConcurrencyUserId(null)} className="text-gray-500 hover:underline text-xs">取消</button>
+                        </div>
+                      ) : (
+                        <span className="inline-flex items-center gap-2">
+                          <span className="font-mono text-sm">
+                            <span className={u.activeConcurrency >= u.concurrencyLimit ? 'text-red-600 font-bold' : 'text-green-600'}>{u.activeConcurrency}</span>
+                            <span className="text-gray-400"> / </span>
+                            <span>{u.concurrencyLimit}</span>
+                          </span>
+                          <button onClick={() => { setEditConcurrencyUserId(u.id); setEditConcurrencyValue(String(u.concurrencyLimit)); }} className="text-blue-500 hover:underline text-xs">修改</button>
+                        </span>
+                      )}
+                    </td>
                     <td className="p-2">
                       {resetUserId === u.id ? (
                         <div className="flex gap-2 items-center">
@@ -352,6 +387,25 @@ function Dashboard() {
                     <span className="text-xs text-gray-500 bg-gray-200 px-2 py-1 rounded">ID: {u.id}</span>
                   </div>
                   <div className="text-sm text-gray-600">Created: {new Date(u.createdAt).toLocaleDateString()}</div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-gray-600">并发:</span>
+                    {editConcurrencyUserId === u.id ? (
+                      <div className="flex gap-1 items-center">
+                        <input type="number" min="1" max="100" value={editConcurrencyValue} onChange={e => setEditConcurrencyValue(e.target.value)} className="border px-2 py-1 rounded-md text-sm w-16" />
+                        <button onClick={() => updateConcurrencyLimit(u.id)} className="bg-blue-500 text-white px-2 py-1 rounded-md text-xs">保存</button>
+                        <button onClick={() => setEditConcurrencyUserId(null)} className="text-gray-500 hover:underline text-xs">取消</button>
+                      </div>
+                    ) : (
+                      <span className="inline-flex items-center gap-1">
+                        <span className="font-mono">
+                          <span className={u.activeConcurrency >= u.concurrencyLimit ? 'text-red-600 font-bold' : 'text-green-600'}>{u.activeConcurrency}</span>
+                          <span className="text-gray-400"> / </span>
+                          <span>{u.concurrencyLimit}</span>
+                        </span>
+                        <button onClick={() => { setEditConcurrencyUserId(u.id); setEditConcurrencyValue(String(u.concurrencyLimit)); }} className="text-blue-500 hover:underline text-xs">修改</button>
+                      </span>
+                    )}
+                  </div>
                   <div className="pt-2 border-t border-gray-200 mt-1">
                     {resetUserId === u.id ? (
                       <div className="flex flex-col gap-2 mt-2">
