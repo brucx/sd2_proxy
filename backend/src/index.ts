@@ -196,22 +196,21 @@ app.get('/api/panel/balance', authMiddleware, async (c) => {
   const dbUser = await db.select({ balance: schema.users.balance, concurrencyLimit: schema.users.concurrencyLimit }).from(schema.users).where(eq(schema.users.id, user.id)).limit(1);
   if (dbUser.length === 0) return c.json({ error: 'User not found' }, 404);
 
-  // Get total consumed from usage_logs
-  const consumed = await db.select({
-    totalCost: sql<string>`coalesce(sum(${schema.usageLogs.costYuan}::numeric), 0)`,
-  }).from(schema.usageLogs).where(eq(schema.usageLogs.userId, user.id));
-
   // Get total topped up from balance_audit
   const topUps = await db.select({
     totalTopUp: sql<string>`coalesce(sum(${schema.balanceAudit.amount}::numeric), 0)`,
   }).from(schema.balanceAudit).where(eq(schema.balanceAudit.userId, user.id));
 
   const cc = concurrencyCache.get(user.id);
+  const balance = parseFloat(dbUser[0]!.balance);
+  const totalTopUp = parseFloat(String(topUps[0]?.totalTopUp || '0'));
+  // totalConsumed = totalTopUp - balance, 无需再聚合 usage_logs
+  const totalConsumed = Math.max(totalTopUp - balance, 0);
 
   return c.json({
-    balance: dbUser[0]!.balance,
-    totalTopUp: parseFloat(String(topUps[0]?.totalTopUp || '0')).toFixed(4),
-    totalConsumed: parseFloat(String(consumed[0]?.totalCost || '0')).toFixed(4),
+    balance: balance.toFixed(4),
+    totalTopUp: totalTopUp.toFixed(4),
+    totalConsumed: totalConsumed.toFixed(4),
     concurrencyLimit: dbUser[0]!.concurrencyLimit,
     activeConcurrency: cc?.active || 0,
   });
