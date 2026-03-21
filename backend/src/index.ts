@@ -23,6 +23,13 @@ const app = new Hono<{
 app.use('*', logger());
 app.use('*', cors());
 
+// Disable caching for all API responses
+app.use('/api/*', async (c, next) => {
+  await next();
+  c.header('Cache-Control', 'no-store, no-cache, must-revalidate');
+  c.header('Pragma', 'no-cache');
+});
+
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
 const UPSTREAM_URL = process.env.UPSTREAM_URL || 'http://118.196.64.1';
 const ARK_API_KEY = process.env.ARK_API_KEY || 'test-ark-key';
