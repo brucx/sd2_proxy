@@ -143,18 +143,18 @@ function Playground() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-5">
+    <div className="max-w-6xl mx-auto p-4 sm:p-6 space-y-5">
       {/* Header */}
-      <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm">
-        <h1 className="text-2xl font-bold">API Playground</h1>
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 rounded-xl shadow-sm">
+        <h1 className="text-xl sm:text-2xl font-bold">API Playground</h1>
+        <div className="flex flex-wrap items-center gap-4">
           <button
             onClick={() => setShowDocs(!showDocs)}
             className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
           >
             {showDocs ? '📖 隐藏文档' : '📖 参数文档'}
           </button>
-          <Link to="/dashboard" className="text-blue-600 hover:underline">Back to Dashboard</Link>
+          <Link to="/dashboard" className="text-blue-600 hover:underline text-sm sm:text-base">Back to Dashboard</Link>
         </div>
       </div>
 
@@ -236,7 +236,7 @@ function Playground() {
           <div>
             <h4 className="font-semibold text-gray-800 mb-2">⚙️ 其他参数</h4>
             <div className="overflow-x-auto">
-              <table className="text-xs w-full border-collapse">
+              <table className="text-xs w-full border-collapse min-w-[500px]">
                 <thead>
                   <tr className="bg-gray-50">
                     <th className="text-left px-2 py-1.5 border border-gray-200 font-semibold">参数</th>
@@ -283,7 +283,7 @@ function Playground() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left Column: Inputs */}
-        <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm space-y-5">
+        <div className="lg:col-span-2 bg-white p-4 sm:p-6 rounded-xl shadow-sm space-y-5">
           {/* API Key */}
           <div>
             <label className="block text-sm font-medium mb-1 text-gray-700">🔑 API Key</label>
@@ -335,24 +335,26 @@ function Playground() {
               </div>
               <HelpText>支持 URL / Base64 / asset://ID。格式 jpeg/png/webp/bmp/tiff/gif，单张 &lt; 30MB，300~6000px。首帧/首尾帧/参考图为互斥场景。</HelpText>
               {refImages.map(item => (
-                <div key={item.id} className="flex gap-2">
+                <div key={item.id} className="flex flex-col sm:flex-row gap-2">
                   <input
                     type="text"
                     value={item.url}
                     onChange={(e) => updateUrl(setRefImages, item.id, e.target.value)}
-                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-md text-sm font-mono focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all"
+                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-md text-sm font-mono focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all w-full"
                     placeholder="https://... 或 data:image/png;base64,... 或 asset://ID"
                   />
-                  <select
-                    value={item.role}
-                    onChange={(e) => updateRole(setRefImages, item.id, e.target.value)}
-                    className="px-2 py-1.5 border border-gray-200 rounded-md text-xs bg-white focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all"
-                  >
-                    <option value="reference_image">reference_image（参考图）</option>
-                    <option value="first_frame">first_frame（首帧）</option>
-                    <option value="last_frame">last_frame（尾帧）</option>
-                  </select>
-                  <button type="button" onClick={() => removeItem(setRefImages, item.id)} className="px-2 py-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors text-sm" title="Remove">✕</button>
+                  <div className="flex gap-2">
+                    <select
+                      value={item.role}
+                      onChange={(e) => updateRole(setRefImages, item.id, e.target.value)}
+                      className="flex-1 sm:flex-none px-2 py-1.5 border border-gray-200 rounded-md text-xs bg-white focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all"
+                    >
+                      <option value="reference_image">参考图</option>
+                      <option value="first_frame">首帧</option>
+                      <option value="last_frame">尾帧</option>
+                    </select>
+                    <button type="button" onClick={() => removeItem(setRefImages, item.id)} className="px-3 py-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors text-sm border border-gray-200 sm:border-transparent" title="Remove">✕</button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -368,16 +370,18 @@ function Playground() {
               </div>
               <HelpText>仅 Seedance 2.0 支持。格式 mp4/mov，480p/720p，[2,15]s，最多 3 个总时长 ≤ 15s，单个 ≤ 50MB，FPS [24,60]。</HelpText>
               {refVideos.map(item => (
-                <div key={item.id} className="flex gap-2">
+                <div key={item.id} className="flex flex-col sm:flex-row gap-2">
                   <input
                     type="text"
                     value={item.url}
                     onChange={(e) => updateUrl(setRefVideos, item.id, e.target.value)}
-                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-md text-sm font-mono focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all"
+                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-md text-sm font-mono focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all w-full"
                     placeholder="https://... 或 asset://ID"
                   />
-                  <span className="px-2 py-1.5 text-xs text-gray-400 bg-gray-50 border border-gray-200 rounded-md flex items-center whitespace-nowrap">reference_video</span>
-                  <button type="button" onClick={() => removeItem(setRefVideos, item.id)} className="px-2 py-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors text-sm" title="Remove">✕</button>
+                  <div className="flex gap-2">
+                    <span className="flex-1 sm:flex-none px-2 py-1.5 text-xs text-gray-400 bg-gray-50 border border-gray-200 rounded-md flex items-center justify-center whitespace-nowrap">reference_video</span>
+                    <button type="button" onClick={() => removeItem(setRefVideos, item.id)} className="px-3 py-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors text-sm border border-gray-200 sm:border-transparent" title="Remove">✕</button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -393,33 +397,35 @@ function Playground() {
               </div>
               <HelpText>仅 Seedance 2.0 支持。格式 wav/mp3，[2,15]s，最多 3 段总时长 ≤ 15s，单个 ≤ 15MB。不可单独输入，需至少包含 1 个参考视频或图片。</HelpText>
               {refAudios.map(item => (
-                <div key={item.id} className="flex gap-2">
+                <div key={item.id} className="flex flex-col sm:flex-row gap-2">
                   <input
                     type="text"
                     value={item.url}
                     onChange={(e) => updateUrl(setRefAudios, item.id, e.target.value)}
-                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-md text-sm font-mono focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all"
+                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-md text-sm font-mono focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all w-full"
                     placeholder="https://... 或 data:audio/wav;base64,... 或 asset://ID"
                   />
-                  <span className="px-2 py-1.5 text-xs text-gray-400 bg-gray-50 border border-gray-200 rounded-md flex items-center whitespace-nowrap">reference_audio</span>
-                  <button type="button" onClick={() => removeItem(setRefAudios, item.id)} className="px-2 py-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors text-sm" title="Remove">✕</button>
+                  <div className="flex gap-2">
+                    <span className="flex-1 sm:flex-none px-2 py-1.5 text-xs text-gray-400 bg-gray-50 border border-gray-200 rounded-md flex items-center justify-center whitespace-nowrap">reference_audio</span>
+                    <button type="button" onClick={() => removeItem(setRefAudios, item.id)} className="px-3 py-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors text-sm border border-gray-200 sm:border-transparent" title="Remove">✕</button>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
 
           {/* Create Button */}
-          <div className="flex gap-3 pt-2">
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
             <button
               onClick={handleCreate}
               disabled={loading}
-              className="bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium shadow-sm"
+              className="bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium shadow-sm w-full sm:w-auto"
             >
               {loading ? 'Sending...' : '🚀 Create Video Task'}
             </button>
             <button
               onClick={() => setShowPreview(!showPreview)}
-              className="px-4 py-2.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors text-sm font-medium"
+              className="px-4 py-2.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors text-sm font-medium w-full sm:w-auto text-center"
             >
               {showPreview ? 'Hide' : 'Show'} Request Preview
             </button>
@@ -439,7 +445,7 @@ function Playground() {
         {/* Right Column: Parameters & Results */}
         <div className="space-y-5">
           {/* Parameters */}
-          <div className="bg-white p-5 rounded-xl shadow-sm space-y-4">
+          <div className="bg-white p-4 sm:p-5 rounded-xl shadow-sm space-y-4">
             <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Parameters</h3>
 
             <div>
@@ -529,7 +535,7 @@ function Playground() {
           </div>
 
           {/* Get Result */}
-          <div className="bg-white p-5 rounded-xl shadow-sm space-y-3">
+          <div className="bg-white p-4 sm:p-5 rounded-xl shadow-sm space-y-3">
             <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Check Result</h3>
             <input
               type="text"
@@ -548,7 +554,7 @@ function Playground() {
           </div>
 
           {/* Response */}
-          <div className="bg-white p-5 rounded-xl shadow-sm">
+          <div className="bg-white p-4 sm:p-5 rounded-xl shadow-sm">
             <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Response</h3>
             <pre className="bg-gray-50 p-3 rounded-lg overflow-x-auto text-xs text-gray-800 max-h-64 overflow-y-auto leading-relaxed">
               {response ? JSON.stringify(response, null, 2) : 'No response yet'}

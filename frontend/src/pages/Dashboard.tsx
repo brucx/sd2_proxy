@@ -207,10 +207,10 @@ function Dashboard() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="flex justify-between items-center mb-8 bg-white p-4 rounded-xl shadow-sm">
-        <h1 className="text-3xl font-bold text-gray-800">API Proxy Dashboard</h1>
-        <div className="space-x-4">
+    <div className="max-w-6xl mx-auto p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 bg-white p-4 rounded-xl shadow-sm">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">API Proxy Dashboard</h1>
+        <div className="flex flex-wrap gap-4">
           <Link to="/playground" className="text-blue-600 hover:underline font-medium">API Playground</Link>
           <button onClick={() => setShowChangePwd(!showChangePwd)} className="text-indigo-600 hover:underline font-medium">修改密码</button>
           <button onClick={logout} className="text-red-500 hover:underline font-medium">Logout</button>
@@ -219,22 +219,22 @@ function Dashboard() {
 
       {/* Change Own Password Section */}
       {showChangePwd && (
-        <div className="bg-white p-6 rounded-xl shadow-sm mb-8">
+        <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm mb-8">
           <h2 className="text-xl font-bold mb-4">修改密码</h2>
-          <div className="flex gap-4 items-end flex-wrap">
-            <div>
+          <div className="flex flex-col sm:flex-row gap-4 sm:items-end flex-wrap">
+            <div className="w-full sm:w-auto">
               <label className="block text-sm text-gray-600 mb-1">旧密码</label>
-              <input type="password" value={oldPwd} onChange={e => setOldPwd(e.target.value)} className="border px-3 py-2 rounded-md" />
+              <input type="password" value={oldPwd} onChange={e => setOldPwd(e.target.value)} className="border px-3 py-2 rounded-md w-full sm:w-auto" />
             </div>
-            <div>
+            <div className="w-full sm:w-auto">
               <label className="block text-sm text-gray-600 mb-1">新密码</label>
-              <input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)} className="border px-3 py-2 rounded-md" />
+              <input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)} className="border px-3 py-2 rounded-md w-full sm:w-auto" />
             </div>
-            <div>
+            <div className="w-full sm:w-auto">
               <label className="block text-sm text-gray-600 mb-1">确认新密码</label>
-              <input type="password" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} className="border px-3 py-2 rounded-md" />
+              <input type="password" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} className="border px-3 py-2 rounded-md w-full sm:w-auto" />
             </div>
-            <button onClick={changeOwnPassword} className="bg-indigo-600 text-white px-4 py-2 rounded-md h-fit">确认修改</button>
+            <button onClick={changeOwnPassword} className="bg-indigo-600 text-white px-4 py-2 rounded-md h-10 w-full sm:w-auto">确认修改</button>
           </div>
           {pwdMsg && <p className={`mt-3 text-sm font-medium ${pwdMsg.includes('成功') ? 'text-green-600' : 'text-red-500'}`}>{pwdMsg}</p>}
         </div>
@@ -242,14 +242,15 @@ function Dashboard() {
 
       {role === 'admin' ? (
         <div className="space-y-8">
-          <div className="bg-white p-6 rounded-xl shadow-sm">
+          <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
             <h2 className="text-xl font-bold mb-4">Users Management</h2>
-            <div className="flex gap-4 mb-4">
-              <input type="text" placeholder="Username" value={newUserName} onChange={e => setNewUserName(e.target.value)} className="border px-3 py-2 rounded-md" />
-              <input type="password" placeholder="Password" value={newUserPass} onChange={e => setNewUserPass(e.target.value)} className="border px-3 py-2 rounded-md" />
-              <button onClick={createUser} className="bg-blue-600 text-white px-4 py-2 rounded-md">Create Tenant</button>
+            <div className="flex flex-col sm:flex-row gap-4 mb-4">
+              <input type="text" placeholder="Username" value={newUserName} onChange={e => setNewUserName(e.target.value)} className="border px-3 py-2 rounded-md w-full sm:w-auto" />
+              <input type="password" placeholder="Password" value={newUserPass} onChange={e => setNewUserPass(e.target.value)} className="border px-3 py-2 rounded-md w-full sm:w-auto" />
+              <button onClick={createUser} className="bg-blue-600 text-white px-4 py-2 rounded-md w-full sm:w-auto whitespace-nowrap">Create Tenant</button>
             </div>
-            <table className="w-full text-left border-collapse">
+            {/* Desktop Table */}
+            <table className="w-full text-left border-collapse hidden md:table">
               <thead>
                 <tr className="border-b bg-gray-50"><th className="p-2">ID</th><th className="p-2">Username</th><th className="p-2">Role</th><th className="p-2">操作</th></tr>
               </thead>
@@ -275,27 +276,54 @@ function Dashboard() {
                 ))}
               </tbody>
             </table>
+            {/* Mobile Cards */}
+            <div className="md:hidden grid gap-4">
+              {users.map(u => (
+                <div key={u.id} className="border border-gray-100 rounded-lg p-4 bg-gray-50 shadow-sm flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-gray-800">{u.username}</span>
+                    <span className="text-xs text-gray-500 bg-gray-200 px-2 py-1 rounded">ID: {u.id}</span>
+                  </div>
+                  <div className="text-sm text-gray-600">Created: {new Date(u.createdAt).toLocaleDateString()}</div>
+                  <div className="pt-2 border-t border-gray-200 mt-1">
+                    {resetUserId === u.id ? (
+                      <div className="flex flex-col gap-2 mt-2">
+                        <input type="password" placeholder="新密码" value={resetPwd} onChange={e => setResetPwd(e.target.value)} className="border px-2 py-1 rounded-md text-sm" />
+                        <div className="flex gap-2">
+                          <button onClick={() => adminResetPassword(u.id)} className="bg-orange-500 text-white px-3 py-1 rounded-md text-sm flex-1">确认</button>
+                          <button onClick={() => { setResetUserId(null); setResetPwd(''); setResetMsg(''); }} className="bg-gray-200 text-gray-700 px-3 py-1 rounded-md text-sm flex-1">取消</button>
+                        </div>
+                        {resetMsg && <span className={`text-xs ${resetMsg.includes('成功') ? 'text-green-600' : 'text-red-500'}`}>{resetMsg}</span>}
+                      </div>
+                    ) : (
+                      <button onClick={() => { setResetUserId(u.id); setResetPwd(''); setResetMsg(''); }} className="text-orange-600 hover:underline text-sm">重置密码</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm">
+          <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
             <h2 className="text-xl font-bold mb-4">Key 管理</h2>
-            <div className="flex gap-4 mb-4 items-end">
-              <div>
+            <div className="flex flex-col sm:flex-row gap-4 mb-4 sm:items-end">
+              <div className="w-full sm:w-auto">
                 <label className="block text-sm text-gray-600 mb-1">用户</label>
-                <select value={adminKeyUserId} onChange={e => setAdminKeyUserId(e.target.value ? parseInt(e.target.value) : '')} className="border px-3 py-2 rounded-md">
+                <select value={adminKeyUserId} onChange={e => setAdminKeyUserId(e.target.value ? parseInt(e.target.value) : '')} className="border px-3 py-2 rounded-md w-full sm:w-auto">
                   <option value="">选择用户</option>
                   {users.filter(u => u.role === 'tenant').map(u => (
                     <option key={u.id} value={u.id}>{u.username}</option>
                   ))}
                 </select>
               </div>
-              <div>
+              <div className="w-full sm:w-auto">
                 <label className="block text-sm text-gray-600 mb-1">Key 名称</label>
-                <input type="text" placeholder="Key Name" value={adminKeyName} onChange={e => setAdminKeyName(e.target.value)} className="border px-3 py-2 rounded-md" />
+                <input type="text" placeholder="Key Name" value={adminKeyName} onChange={e => setAdminKeyName(e.target.value)} className="border px-3 py-2 rounded-md w-full sm:w-auto" />
               </div>
-              <button onClick={createAdminKey} className="bg-blue-600 text-white px-4 py-2 rounded-md h-fit">创建 Key</button>
+              <button onClick={createAdminKey} className="bg-blue-600 text-white px-4 py-2 rounded-md h-fit w-full sm:w-auto">创建 Key</button>
             </div>
-            <table className="w-full text-left border-collapse text-sm">
+            {/* Desktop Table */}
+            <table className="w-full text-left border-collapse text-sm hidden md:table">
               <thead>
                 <tr className="border-b bg-gray-50"><th className="p-2">用户</th><th className="p-2">名称</th><th className="p-2">API Key</th><th className="p-2">状态</th><th className="p-2">创建时间</th><th className="p-2">操作</th></tr>
               </thead>
@@ -331,12 +359,43 @@ function Dashboard() {
                 ))}
               </tbody>
             </table>
+            {/* Mobile Cards */}
+            <div className="md:hidden grid gap-4">
+              {adminKeys.map(k => (
+                <div key={k.id} className="border border-gray-100 rounded-lg p-4 bg-gray-50 shadow-sm flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-gray-800">{k.name}</span>
+                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${k.enabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                      {k.enabled ? '启用' : '禁用'}
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-600">User: {k.username}</div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="font-mono text-xs text-gray-600">{maskKey(k.apiKey)}</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); copyKey(k.id, k.apiKey); }}
+                      className="inline-flex items-center px-2 py-1 rounded text-xs bg-gray-200 hover:bg-blue-100 text-gray-600 hover:text-blue-600 transition-colors"
+                      title="复制 Key"
+                    >
+                      {copiedKeyId === k.id ? '✅ Copied' : '📋 Copy'}
+                    </button>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t border-gray-200 mt-1">
+                    <span className="text-xs text-gray-500">{new Date(k.createdAt).toLocaleDateString()}</span>
+                    <button onClick={() => toggleKey(k.id)} className={`text-sm font-medium ${k.enabled ? 'text-red-500 hover:underline' : 'text-green-600 hover:underline'}`}>
+                      {k.enabled ? '禁用' : '启用'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm">
+          <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
             <h2 className="text-xl font-bold mb-4">Global Usage Statistics (Tokens)</h2>
             <p className="mb-4 font-medium text-lg">Total Completion Tokens: {usage.reduce((acc, curr) => acc + curr.completionTokens, 0)}</p>
-            <table className="w-full text-left border-collapse text-sm">
+            {/* Desktop Table */}
+            <table className="w-full text-left border-collapse text-sm hidden md:table">
               <thead>
                 <tr className="border-b bg-gray-50"><th className="p-2">User ID</th><th className="p-2">Key ID</th><th className="p-2">Task ID</th><th className="p-2">Tokens</th><th className="p-2">Status</th></tr>
               </thead>
@@ -346,13 +405,29 @@ function Dashboard() {
                 ))}
               </tbody>
             </table>
+            {/* Mobile Cards */}
+            <div className="md:hidden grid gap-4">
+              {usage.map(u => (
+                <div key={u.id} className="border border-gray-100 rounded-lg p-4 bg-gray-50 shadow-sm flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-gray-800">User ID: {u.userId}</span>
+                    <span className="text-xs font-semibold px-2 py-1 rounded bg-blue-100 text-blue-800">{u.status}</span>
+                  </div>
+                  <div className="text-sm text-gray-600 break-all">Task ID: <span className="font-mono text-xs">{u.taskId}</span></div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-600">Key ID: {u.keyId}</span>
+                    <span className="font-semibold text-green-600">Tokens: {u.completionTokens}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Request Logs Section */}
-          <div className="bg-white p-6 rounded-xl shadow-sm">
+          <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
             <h2 className="text-xl font-bold mb-4">请求日志 (Request Logs)</h2>
-            <div className="flex gap-4 mb-4 items-end">
-              <div>
+            <div className="flex flex-col sm:flex-row gap-4 mb-4 sm:items-end">
+              <div className="w-full sm:w-auto">
                 <label className="block text-sm text-gray-600 mb-1">按用户筛选</label>
                 <select
                   value={requestLogsUserFilter}
@@ -360,7 +435,7 @@ function Dashboard() {
                     setRequestLogsUserFilter(e.target.value);
                     fetchRequestLogs(1, e.target.value);
                   }}
-                  className="border px-3 py-2 rounded-md"
+                  className="border px-3 py-2 rounded-md w-full sm:w-auto"
                 >
                   <option value="">全部用户</option>
                   {users.map(u => (
@@ -370,14 +445,14 @@ function Dashboard() {
               </div>
               <button
                 onClick={() => fetchRequestLogs(requestLogsPage, requestLogsUserFilter)}
-                className="bg-gray-600 text-white px-4 py-2 rounded-md h-fit text-sm"
+                className="bg-gray-600 text-white px-4 py-2 rounded-md h-fit text-sm w-full sm:w-auto"
               >刷新</button>
             </div>
 
             <div className="text-sm text-gray-500 mb-2">共 {requestLogsTotal} 条记录</div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-sm">
+              <table className="w-full text-left border-collapse text-sm hidden md:table">
                 <thead>
                   <tr className="border-b bg-gray-50">
                     <th className="p-2"></th>
@@ -436,6 +511,57 @@ function Dashboard() {
                   ))}
                 </tbody>
               </table>
+
+              {/* Mobile Cards for Request Logs */}
+              <div className="md:hidden grid gap-4">
+                {requestLogs.map(log => (
+                  <div key={log.id} className="border border-gray-100 rounded-lg bg-gray-50 shadow-sm flex flex-col overflow-hidden">
+                    <div
+                      className={`p-4 flex flex-col gap-2 cursor-pointer ${expandedLogId === log.id ? 'bg-blue-50' : ''}`}
+                      onClick={() => setExpandedLogId(expandedLogId === log.id ? null : log.id)}
+                    >
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="font-semibold text-gray-800 break-all">{log.endpoint}</span>
+                        <span className={`shrink-0 ml-2 inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                          log.responseStatus >= 200 && log.responseStatus < 300 ? 'bg-green-100 text-green-700' :
+                          log.responseStatus >= 400 ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-700'
+                        }`}>
+                          {log.responseStatus}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm text-gray-600">
+                        <span>User: {log.username}</span>
+                        <span>{log.durationMs != null ? `${log.durationMs}ms` : '-'}</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>{new Date(log.createdAt).toLocaleString()}</span>
+                        <span>{log.ipAddress}</span>
+                      </div>
+                      <div className="text-center text-gray-400 text-xs mt-1">
+                        {expandedLogId === log.id ? 'Tap to hide details ▲' : 'Tap to view details ▼'}
+                      </div>
+                    </div>
+                    {expandedLogId === log.id && (
+                      <div className="bg-white p-4 border-t border-gray-200">
+                        <div className="grid grid-cols-1 gap-4">
+                          <div>
+                            <h4 className="font-semibold text-gray-700 mb-2 text-sm">Request Body</h4>
+                            <pre className="bg-gray-900 text-green-300 p-3 rounded-lg text-xs overflow-auto max-h-48 whitespace-pre-wrap">
+                              {log.requestBody ? JSON.stringify(JSON.parse(log.requestBody), null, 2) : '(empty)'}
+                            </pre>
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-gray-700 mb-2 text-sm">Response Body</h4>
+                            <pre className="bg-gray-900 text-blue-300 p-3 rounded-lg text-xs overflow-auto max-h-48 whitespace-pre-wrap">
+                              {log.responseBody ? JSON.stringify(JSON.parse(log.responseBody), null, 2) : '(empty)'}
+                            </pre>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Pagination */}
@@ -460,13 +586,14 @@ function Dashboard() {
         </div>
       ) : (
         <div className="space-y-8">
-          <div className="bg-white p-6 rounded-xl shadow-sm">
+          <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
             <h2 className="text-xl font-bold mb-4">API Keys</h2>
-            <div className="flex gap-4 mb-4">
-              <input type="text" placeholder="Key Name" value={newKeyName} onChange={e => setNewKeyName(e.target.value)} className="border px-3 py-2 rounded-md flex-1" />
-              <button onClick={createKey} className="bg-blue-600 text-white px-4 py-2 rounded-md">Create Key</button>
+            <div className="flex flex-col sm:flex-row gap-4 mb-4">
+              <input type="text" placeholder="Key Name" value={newKeyName} onChange={e => setNewKeyName(e.target.value)} className="border px-3 py-2 rounded-md flex-1 w-full" />
+              <button onClick={createKey} className="bg-blue-600 text-white px-4 py-2 rounded-md w-full sm:w-auto">Create Key</button>
             </div>
-            <table className="w-full text-left border-collapse">
+            {/* Desktop Table */}
+            <table className="w-full text-left border-collapse hidden md:table">
               <thead>
                 <tr className="border-b bg-gray-50"><th className="p-2">Name</th><th className="p-2">API Key</th><th className="p-2">Created</th></tr>
               </thead>
@@ -491,14 +618,35 @@ function Dashboard() {
                 ))}
               </tbody>
             </table>
+            {/* Mobile Cards */}
+            <div className="md:hidden grid gap-4">
+              {keys.map(k => (
+                <div key={k.id} className="border border-gray-100 rounded-lg p-4 bg-gray-50 shadow-sm flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-gray-800">{k.name}</span>
+                    <span className="text-xs text-gray-500">{new Date(k.createdAt).toLocaleDateString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="font-mono text-xs text-gray-600">{maskKey(k.apiKey)}</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); copyKey(k.id, k.apiKey); }}
+                      className="inline-flex items-center px-2 py-1 rounded text-xs bg-gray-200 hover:bg-blue-100 text-gray-600 hover:text-blue-600 transition-colors"
+                      title="复制 Key"
+                    >
+                      {copiedKeyId === k.id ? '✅ Copied' : '📋 Copy'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* IP Whitelist Management */}
-          <div className="bg-white p-6 rounded-xl shadow-sm">
+          <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
             <h2 className="text-xl font-bold mb-1">IP 白名单</h2>
             <p className="text-sm text-gray-500 mb-4">设置后仅允许白名单中的 IP 调用 API，最多 2 个。未设置时不限制。</p>
-            <div className="flex gap-4 mb-4 items-end">
-              <div className="flex-1">
+            <div className="flex flex-col sm:flex-row gap-4 mb-4 sm:items-end">
+              <div className="w-full">
                 <label className="block text-sm text-gray-600 mb-1">IP 地址</label>
                 <input
                   type="text"
@@ -512,38 +660,54 @@ function Dashboard() {
               <button
                 onClick={addWhitelistIp}
                 disabled={whitelist.length >= 2}
-                className="bg-blue-600 text-white px-4 py-2 rounded-md disabled:opacity-40 h-fit"
+                className="bg-blue-600 text-white px-4 py-2 rounded-md disabled:opacity-40 h-10 w-full sm:w-auto shrink-0"
               >{whitelist.length >= 2 ? '已达上限' : '添加'}</button>
             </div>
             {whitelistMsg && <p className={`mb-3 text-sm font-medium ${whitelistMsg.includes('成功') ? 'text-green-600' : 'text-red-500'}`}>{whitelistMsg}</p>}
             {whitelist.length === 0 ? (
               <p className="text-gray-400 text-sm">暂无白名单 IP（所有 IP 均可访问）</p>
             ) : (
-              <table className="w-full text-left border-collapse text-sm">
-                <thead>
-                  <tr className="border-b bg-gray-50"><th className="p-2">IP 地址</th><th className="p-2">添加时间</th><th className="p-2">操作</th></tr>
-                </thead>
-                <tbody>
+              <>
+                {/* Desktop Table */}
+                <table className="w-full text-left border-collapse text-sm hidden md:table">
+                  <thead>
+                    <tr className="border-b bg-gray-50"><th className="p-2">IP 地址</th><th className="p-2">添加时间</th><th className="p-2">操作</th></tr>
+                  </thead>
+                  <tbody>
+                    {whitelist.map(w => (
+                      <tr key={w.id} className="border-b">
+                        <td className="p-2 font-mono">{w.ipAddress}</td>
+                        <td className="p-2">{new Date(w.createdAt).toLocaleString()}</td>
+                        <td className="p-2">
+                          <button onClick={() => deleteWhitelistIp(w.id)} className="text-red-500 hover:underline text-sm">删除</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {/* Mobile Cards */}
+                <div className="md:hidden grid gap-4">
                   {whitelist.map(w => (
-                    <tr key={w.id} className="border-b">
-                      <td className="p-2 font-mono">{w.ipAddress}</td>
-                      <td className="p-2">{new Date(w.createdAt).toLocaleString()}</td>
-                      <td className="p-2">
-                        <button onClick={() => deleteWhitelistIp(w.id)} className="text-red-500 hover:underline text-sm">删除</button>
-                      </td>
-                    </tr>
+                    <div key={w.id} className="border border-gray-100 rounded-lg p-4 bg-gray-50 shadow-sm flex flex-col gap-2">
+                      <div className="flex justify-between items-center">
+                        <span className="font-mono text-gray-800 break-all">{w.ipAddress}</span>
+                        <button onClick={() => deleteWhitelistIp(w.id)} className="text-red-500 hover:underline text-sm shrink-0 ml-2">删除</button>
+                      </div>
+                      <div className="text-xs text-gray-500">{new Date(w.createdAt).toLocaleString()}</div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              </>
             )}
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm">
+          <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
             <h2 className="text-xl font-bold mb-4">Usage Statistics</h2>
-            <p className="mb-4 font-medium text-lg text-green-700 bg-green-50 p-3 rounded-lg border border-green-200 inline-block">
+            <p className="mb-4 font-medium text-lg text-green-700 bg-green-50 p-3 rounded-lg border border-green-200 inline-block w-full sm:w-auto text-center sm:text-left">
               Total Used Tokens: {usage.reduce((acc, curr) => acc + curr.completionTokens, 0)}
             </p>
-            <table className="w-full text-left border-collapse text-sm">
+            {/* Desktop Table */}
+            <table className="w-full text-left border-collapse text-sm hidden md:table">
               <thead>
                 <tr className="border-b bg-gray-50"><th className="p-2">Endpoint</th><th className="p-2">Task ID</th><th className="p-2">Tokens</th><th className="p-2">Status</th><th className="p-2">Time</th></tr>
               </thead>
@@ -553,6 +717,27 @@ function Dashboard() {
                 ))}
               </tbody>
             </table>
+            {/* Mobile Cards */}
+            <div className="md:hidden grid gap-4">
+              {usage.map(u => (
+                <div key={u.id} className="border border-gray-100 rounded-lg p-4 bg-gray-50 shadow-sm flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-gray-800 break-all">{u.endpoint}</span>
+                    <span className={`shrink-0 ml-2 inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                      u.status === 'success' ? 'bg-green-100 text-green-700' :
+                      u.status === 'failed' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {u.status}
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-600 break-all">Task ID: <span className="font-mono text-xs">{u.taskId}</span></div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-500 text-xs">{new Date(u.createdAt).toLocaleString()}</span>
+                    <span className="font-semibold text-green-600">Tokens: {u.completionTokens}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

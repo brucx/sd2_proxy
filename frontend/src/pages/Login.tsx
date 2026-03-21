@@ -23,8 +23,8 @@ function Login() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="w-full max-w-md p-8 bg-white rounded-xl shadow-lg">
+    <div className="flex items-center justify-center min-h-screen p-4">
+      <div className="w-full max-w-md p-6 sm:p-8 bg-white rounded-xl shadow-lg">
         <h2 className="text-2xl font-bold mb-6 text-center">API Proxy Panel</h2>
         {error && <p className="text-red-500 mb-4 text-center">{error}</p>}
         <form onSubmit={handleLogin} className="space-y-4">
