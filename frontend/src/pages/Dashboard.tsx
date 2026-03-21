@@ -15,9 +15,12 @@ function Dashboard() {
   const [keys, setKeys] = useState<any[]>([]);
   const [usage, setUsage] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
+  const [adminKeys, setAdminKeys] = useState<any[]>([]);
   const [newKeyName, setNewKeyName] = useState('');
   const [newUserName, setNewUserName] = useState('');
   const [newUserPass, setNewUserPass] = useState('');
+  const [adminKeyUserId, setAdminKeyUserId] = useState<number | ''>('');
+  const [adminKeyName, setAdminKeyName] = useState('');
 
   // Change own password state
   const [showChangePwd, setShowChangePwd] = useState(false);
@@ -42,12 +45,14 @@ function Dashboard() {
   const fetchData = async () => {
     try {
       if (role === 'admin') {
-        const [usersRes, usageRes] = await Promise.all([
+        const [usersRes, usageRes, keysRes] = await Promise.all([
           api.get('/admin/users'),
-          api.get('/admin/usage')
+          api.get('/admin/usage'),
+          api.get('/admin/keys')
         ]);
         setUsers(usersRes.data);
         setUsage(usageRes.data);
+        setAdminKeys(keysRes.data);
       } else {
         const [keysRes, usageRes] = await Promise.all([
           api.get('/keys'),
@@ -76,6 +81,19 @@ function Dashboard() {
     await api.post('/admin/users', { username: newUserName, password: newUserPass, role: 'tenant' });
     setNewUserName('');
     setNewUserPass('');
+    fetchData();
+  };
+
+  const createAdminKey = async () => {
+    if (!adminKeyUserId || !adminKeyName) return;
+    await api.post('/admin/keys', { userId: adminKeyUserId, name: adminKeyName });
+    setAdminKeyUserId('');
+    setAdminKeyName('');
+    fetchData();
+  };
+
+  const toggleKey = async (keyId: number) => {
+    await api.put(`/admin/keys/${keyId}/toggle`);
     fetchData();
   };
 
@@ -175,6 +193,51 @@ function Dashboard() {
                       ) : (
                         <button onClick={() => { setResetUserId(u.id); setResetPwd(''); setResetMsg(''); }} className="text-orange-600 hover:underline text-sm">重置密码</button>
                       )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="bg-white p-6 rounded-xl shadow-sm">
+            <h2 className="text-xl font-bold mb-4">Key 管理</h2>
+            <div className="flex gap-4 mb-4 items-end">
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">用户</label>
+                <select value={adminKeyUserId} onChange={e => setAdminKeyUserId(e.target.value ? parseInt(e.target.value) : '')} className="border px-3 py-2 rounded-md">
+                  <option value="">选择用户</option>
+                  {users.filter(u => u.role === 'tenant').map(u => (
+                    <option key={u.id} value={u.id}>{u.username}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Key 名称</label>
+                <input type="text" placeholder="Key Name" value={adminKeyName} onChange={e => setAdminKeyName(e.target.value)} className="border px-3 py-2 rounded-md" />
+              </div>
+              <button onClick={createAdminKey} className="bg-blue-600 text-white px-4 py-2 rounded-md h-fit">创建 Key</button>
+            </div>
+            <table className="w-full text-left border-collapse text-sm">
+              <thead>
+                <tr className="border-b bg-gray-50"><th className="p-2">用户</th><th className="p-2">名称</th><th className="p-2">API Key</th><th className="p-2">状态</th><th className="p-2">创建时间</th><th className="p-2">操作</th></tr>
+              </thead>
+              <tbody>
+                {adminKeys.map(k => (
+                  <tr key={k.id} className="border-b">
+                    <td className="p-2">{k.username}</td>
+                    <td className="p-2">{k.name}</td>
+                    <td className="p-2 font-mono text-xs text-gray-600">{k.apiKey}</td>
+                    <td className="p-2">
+                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${k.enabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                        {k.enabled ? '启用' : '禁用'}
+                      </span>
+                    </td>
+                    <td className="p-2">{new Date(k.createdAt).toLocaleDateString()}</td>
+                    <td className="p-2">
+                      <button onClick={() => toggleKey(k.id)} className={`text-sm font-medium ${k.enabled ? 'text-red-500 hover:underline' : 'text-green-600 hover:underline'}`}>
+                        {k.enabled ? '禁用' : '启用'}
+                      </button>
                     </td>
                   </tr>
                 ))}

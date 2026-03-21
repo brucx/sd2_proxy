@@ -13,6 +13,7 @@ export const keys = pgTable('keys', {
   userId: integer('user_id').references(() => users.id).notNull(),
   apiKey: varchar('api_key', { length: 255 }).notNull().unique(),
   name: varchar('name', { length: 255 }).notNull(),
+  enabled: boolean('enabled').notNull().default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

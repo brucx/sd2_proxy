@@ -152,6 +152,48 @@ app.get('/api/panel/admin/usage', authMiddleware, adminMiddleware, async (c) => 
   return c.json(logs);
 });
 
+// Admin: Get all keys (with username)
+app.get('/api/panel/admin/keys', authMiddleware, adminMiddleware, async (c) => {
+  const allKeys = await db
+    .select({
+      id: schema.keys.id,
+      userId: schema.keys.userId,
+      username: schema.users.username,
+      apiKey: schema.keys.apiKey,
+      name: schema.keys.name,
+      enabled: schema.keys.enabled,
+      createdAt: schema.keys.createdAt,
+    })
+    .from(schema.keys)
+    .innerJoin(schema.users, eq(schema.keys.userId, schema.users.id));
+  return c.json(allKeys);
+});
+
+// Admin: Create key for a user
+app.post('/api/panel/admin/keys', authMiddleware, adminMiddleware, async (c) => {
+  const { userId, name } = await c.req.json();
+  if (!userId || !name) return c.json({ error: 'userId and name are required' }, 400);
+
+  const targetUser = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+  if (targetUser.length === 0) return c.json({ error: 'User not found' }, 404);
+
+  const { v4: uuidv4 } = await import('uuid');
+  const apiKey = `sk-${uuidv4().replace(/-/g, '')}`;
+  await db.insert(schema.keys).values({ userId, apiKey, name });
+  return c.json({ success: true, apiKey });
+});
+
+// Admin: Toggle key enabled/disabled
+app.put('/api/panel/admin/keys/:id/toggle', authMiddleware, adminMiddleware, async (c) => {
+  const keyId = parseInt(c.req.param('id'));
+  const keyRecord = await db.select().from(schema.keys).where(eq(schema.keys.id, keyId)).limit(1);
+  if (keyRecord.length === 0) return c.json({ error: 'Key not found' }, 404);
+
+  const newEnabled = !keyRecord[0]!.enabled;
+  await db.update(schema.keys).set({ enabled: newEnabled }).where(eq(schema.keys.id, keyId));
+  return c.json({ success: true, enabled: newEnabled });
+});
+
 // -- API Proxy Middleware & Handlers --
 
 // Simple In-memory Rate Limiting (Requests per minute per key)
@@ -169,6 +211,10 @@ const proxyAuthMiddleware = async (c: any, next: any) => {
 
   if (keyRecord.length === 0) {
     return c.json({ error: 'Invalid API Key' }, 401);
+  }
+
+  if (!keyRecord[0]!.enabled) {
+    return c.json({ error: 'API Key is disabled' }, 403);
   }
 
   const now = Date.now();
