@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
 
@@ -32,6 +32,70 @@ function Playground() {
   const [loading, setLoading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
+  const [showCurl, setShowCurl] = useState(false);
+  const [showResponseExample, setShowResponseExample] = useState(false);
+  const [curlCopied, setCurlCopied] = useState(false);
+
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+
+  const buildCurlCreate = (body: any) => {
+    const key = apiKey || 'YOUR_API_KEY';
+    return `curl -X POST '${baseUrl}/api/v1/doubao/create' \\
+  -H 'Content-Type: application/json' \\
+  -H 'Authorization: Bearer ${key}' \\
+  -d '${JSON.stringify(body, null, 2)}'`;
+  };
+
+  const buildCurlGetResult = () => {
+    const key = apiKey || 'YOUR_API_KEY';
+    const tid = taskId || 'TASK_ID';
+    return `curl -X POST '${baseUrl}/api/v1/doubao/get_result' \\
+  -H 'Content-Type: application/json' \\
+  -H 'Authorization: Bearer ${key}' \\
+  -d '{"id": "${tid}"}'`;
+  };
+
+  const copyCurl = useCallback(async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    setCurlCopied(true);
+    setTimeout(() => setCurlCopied(false), 1500);
+  }, []);
+
+  const sampleResponse = {
+    id: "task_7c5ab7c691c54146",
+    model: "doubao-seedance-2-0-260128",
+    status: "succeeded",
+    error: null,
+    content: {
+      video_url: "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedance-2-0/xxx.mp4?X-Tos-Algorithm=...",
+      last_frame_url: null,
+      file_url: null
+    },
+    usage: { completion_tokens: 108900 },
+    framespersecond: 24,
+    created_at: 1774105394,
+    updated_at: 1774105570,
+    seed: 52050,
+    revised_prompt: null,
+    service_tier: "default",
+    execution_expires_after: 172800,
+    generate_audio: true,
+    duration: 5,
+    ratio: "16:9",
+    resolution: "720p",
+    draft: false,
+    draft_task_id: null,
+    _request_id: ""
+  };
 
   const addImage = () => {
     setRefImages(prev => [...prev, { id: nextId++, url: '', role: 'reference_image' }]);
@@ -559,6 +623,61 @@ function Playground() {
             <pre className="bg-gray-50 p-3 rounded-lg overflow-x-auto text-xs text-gray-800 max-h-64 overflow-y-auto leading-relaxed">
               {response ? JSON.stringify(response, null, 2) : 'No response yet'}
             </pre>
+          </div>
+
+          {/* Curl Example */}
+          <div className="bg-white p-4 sm:p-5 rounded-xl shadow-sm space-y-3">
+            <button
+              onClick={() => setShowCurl(!showCurl)}
+              className="flex items-center justify-between w-full text-left"
+            >
+              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">💻 Curl 示例</h3>
+              <span className="text-xs text-gray-400">{showCurl ? '▲ 收起' : '▼ 展开'}</span>
+            </button>
+            {showCurl && (
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-gray-600">创建任务 (create)</span>
+                    <button
+                      onClick={() => copyCurl(buildCurlCreate(requestBody))}
+                      className="text-xs px-2 py-0.5 rounded bg-gray-100 hover:bg-blue-100 text-gray-500 hover:text-blue-600 transition-colors"
+                    >{curlCopied ? '✅ 已复制' : '📋 复制'}</button>
+                  </div>
+                  <pre className="bg-gray-900 text-green-400 p-3 rounded-lg overflow-x-auto text-xs leading-relaxed max-h-52 overflow-y-auto whitespace-pre-wrap">
+                    {buildCurlCreate(requestBody)}
+                  </pre>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-gray-600">查询结果 (get_result)</span>
+                    <button
+                      onClick={() => copyCurl(buildCurlGetResult())}
+                      className="text-xs px-2 py-0.5 rounded bg-gray-100 hover:bg-blue-100 text-gray-500 hover:text-blue-600 transition-colors"
+                    >{curlCopied ? '✅ 已复制' : '📋 复制'}</button>
+                  </div>
+                  <pre className="bg-gray-900 text-green-400 p-3 rounded-lg overflow-x-auto text-xs leading-relaxed whitespace-pre-wrap">
+                    {buildCurlGetResult()}
+                  </pre>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Response Example */}
+          <div className="bg-white p-4 sm:p-5 rounded-xl shadow-sm space-y-3">
+            <button
+              onClick={() => setShowResponseExample(!showResponseExample)}
+              className="flex items-center justify-between w-full text-left"
+            >
+              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">📄 返回示例</h3>
+              <span className="text-xs text-gray-400">{showResponseExample ? '▲ 收起' : '▼ 展开'}</span>
+            </button>
+            {showResponseExample && (
+              <pre className="bg-gray-900 text-blue-300 p-3 rounded-lg overflow-x-auto text-xs leading-relaxed max-h-80 overflow-y-auto whitespace-pre-wrap">
+                {JSON.stringify(sampleResponse, null, 2)}
+              </pre>
+            )}
           </div>
         </div>
       </div>
