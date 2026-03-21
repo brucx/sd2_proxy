@@ -6,7 +6,7 @@ import { cors } from 'hono/cors';
 import { config } from 'dotenv';
 import { db } from './db/index.js';
 import * as schema from './db/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, desc, sql } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import cron from 'node-cron';
@@ -152,6 +152,56 @@ app.get('/api/panel/admin/usage', authMiddleware, adminMiddleware, async (c) => 
   return c.json(logs);
 });
 
+// Admin: Get Request Logs (with pagination & user filter)
+app.get('/api/panel/admin/request-logs', authMiddleware, adminMiddleware, async (c) => {
+  const page = parseInt(c.req.query('page') || '1');
+  const pageSize = parseInt(c.req.query('pageSize') || '50');
+  const userIdFilter = c.req.query('userId');
+  const offset = (page - 1) * pageSize;
+
+  try {
+    // Build conditions
+    const conditions = userIdFilter ? eq(schema.requestLogs.userId, parseInt(userIdFilter)) : undefined;
+
+    // Get total count
+    const countResult = conditions
+      ? await db.select({ count: sql<number>`count(*)` }).from(schema.requestLogs).where(conditions)
+      : await db.select({ count: sql<number>`count(*)` }).from(schema.requestLogs);
+    const total = Number(countResult[0]?.count || 0);
+
+    // Get logs with user info
+    let query = db
+      .select({
+        id: schema.requestLogs.id,
+        userId: schema.requestLogs.userId,
+        username: schema.users.username,
+        keyId: schema.requestLogs.keyId,
+        endpoint: schema.requestLogs.endpoint,
+        method: schema.requestLogs.method,
+        requestBody: schema.requestLogs.requestBody,
+        responseBody: schema.requestLogs.responseBody,
+        responseStatus: schema.requestLogs.responseStatus,
+        durationMs: schema.requestLogs.durationMs,
+        ipAddress: schema.requestLogs.ipAddress,
+        createdAt: schema.requestLogs.createdAt,
+      })
+      .from(schema.requestLogs)
+      .innerJoin(schema.users, eq(schema.requestLogs.userId, schema.users.id))
+      .orderBy(desc(schema.requestLogs.createdAt))
+      .limit(pageSize)
+      .offset(offset);
+
+    const logs = conditions
+      ? await (query as any).where(conditions)
+      : await query;
+
+    return c.json({ logs, total, page, pageSize });
+  } catch (error) {
+    console.error('Request logs query error:', error);
+    return c.json({ error: 'Internal Server Error' }, 500);
+  }
+});
+
 // Admin: Get all keys (with username)
 app.get('/api/panel/admin/keys', authMiddleware, adminMiddleware, async (c) => {
   const allKeys = await db
@@ -244,6 +294,11 @@ const MODEL_MAP: Record<string, string> = {
 app.post('/api/v1/doubao/create', proxyAuthMiddleware, async (c) => {
   const keyRecord = c.get('keyRecord') as any;
   const body = await c.req.json();
+  const startTime = Date.now();
+  const clientIp = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown';
+
+  // Save original model name for logging before mapping
+  const originalBody = JSON.stringify(body);
 
   // Map model name to endpoint ID
   const userModel = body.model;
@@ -266,6 +321,8 @@ app.post('/api/v1/doubao/create', proxyAuthMiddleware, async (c) => {
     });
 
     const data: any = await upstreamRes.json();
+    const durationMs = Date.now() - startTime;
+    const responseBody = JSON.stringify(data);
 
     if (upstreamRes.ok && data.id) {
       await db.insert(schema.usageLogs).values({
@@ -277,10 +334,35 @@ app.post('/api/v1/doubao/create', proxyAuthMiddleware, async (c) => {
       });
     }
 
+    // Log request asynchronously (don't block response)
+    db.insert(schema.requestLogs).values({
+      userId: keyRecord.userId,
+      keyId: keyRecord.id,
+      endpoint: '/create',
+      method: 'POST',
+      requestBody: originalBody,
+      responseBody: responseBody,
+      responseStatus: upstreamRes.status,
+      durationMs,
+      ipAddress: clientIp,
+    }).catch(err => console.error('Request log insert error:', err));
+
     c.status(upstreamRes.status as any);
     return c.json(data);
   } catch (error) {
     console.error('Proxy Create Error:', error);
+    // Log failed request
+    db.insert(schema.requestLogs).values({
+      userId: keyRecord.userId,
+      keyId: keyRecord.id,
+      endpoint: '/create',
+      method: 'POST',
+      requestBody: originalBody,
+      responseBody: JSON.stringify({ error: 'Internal Server Error' }),
+      responseStatus: 500,
+      durationMs: Date.now() - startTime,
+      ipAddress: clientIp,
+    }).catch(err => console.error('Request log insert error:', err));
     return c.json({ error: 'Internal Server Error' }, 500);
   }
 });
@@ -288,6 +370,9 @@ app.post('/api/v1/doubao/create', proxyAuthMiddleware, async (c) => {
 app.post('/api/v1/doubao/get_result', proxyAuthMiddleware, async (c) => {
   const keyRecord = c.get('keyRecord') as any;
   const body = await c.req.json();
+  const startTime = Date.now();
+  const clientIp = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown';
+  const requestBodyStr = JSON.stringify(body);
 
   try {
     const upstreamRes = await fetch(`${UPSTREAM_URL}/api/v1/doubao/get_result`, {
@@ -300,6 +385,8 @@ app.post('/api/v1/doubao/get_result', proxyAuthMiddleware, async (c) => {
     });
 
     const data: any = await upstreamRes.json();
+    const durationMs = Date.now() - startTime;
+    const responseBody = JSON.stringify(data);
 
     if (upstreamRes.ok && data.status) {
       // Update usage log if status changed to succeeded or failed
@@ -315,10 +402,35 @@ app.post('/api/v1/doubao/get_result', proxyAuthMiddleware, async (c) => {
       }
     }
 
+    // Log request asynchronously
+    db.insert(schema.requestLogs).values({
+      userId: keyRecord.userId,
+      keyId: keyRecord.id,
+      endpoint: '/get_result',
+      method: 'POST',
+      requestBody: requestBodyStr,
+      responseBody: responseBody,
+      responseStatus: upstreamRes.status,
+      durationMs,
+      ipAddress: clientIp,
+    }).catch(err => console.error('Request log insert error:', err));
+
     c.status(upstreamRes.status as any);
     return c.json(data);
   } catch (error) {
     console.error('Proxy Get Result Error:', error);
+    // Log failed request
+    db.insert(schema.requestLogs).values({
+      userId: keyRecord.userId,
+      keyId: keyRecord.id,
+      endpoint: '/get_result',
+      method: 'POST',
+      requestBody: requestBodyStr,
+      responseBody: JSON.stringify({ error: 'Internal Server Error' }),
+      responseStatus: 500,
+      durationMs: Date.now() - startTime,
+      ipAddress: clientIp,
+    }).catch(err => console.error('Request log insert error:', err));
     return c.json({ error: 'Internal Server Error' }, 500);
   }
 });

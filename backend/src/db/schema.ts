@@ -28,3 +28,17 @@ export const usageLogs = pgTable('usage_logs', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
+
+export const requestLogs = pgTable('request_logs', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  keyId: integer('key_id').references(() => keys.id).notNull(),
+  endpoint: varchar('endpoint', { length: 255 }).notNull(),
+  method: varchar('method', { length: 10 }).notNull().default('POST'),
+  requestBody: text('request_body'),
+  responseBody: text('response_body'),
+  responseStatus: integer('response_status'),
+  durationMs: integer('duration_ms'),
+  ipAddress: varchar('ip_address', { length: 100 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
