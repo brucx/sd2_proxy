@@ -75,7 +75,7 @@ function Dashboard() {
   const [topUpAmount, setTopUpAmount] = useState('');
   const [topUpDesc, setTopUpDesc] = useState('');
   const [topUpMsg, setTopUpMsg] = useState('');
-  const [tenantBalance, setTenantBalance] = useState<{balance: string, totalTopUp: string, totalConsumed: string} | null>(null);
+  const [tenantBalance, setTenantBalance] = useState<{balance: string, totalTopUp: string, totalConsumed: string, concurrencyLimit: number, activeConcurrency: number} | null>(null);
 
   const copyKey = useCallback(async (keyId: number, apiKey: string) => {
     try {
@@ -886,8 +886,8 @@ function Dashboard() {
           {/* Tenant Balance Card */}
           {tenantBalance && (
             <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
-              <h2 className="text-xl font-bold mb-4">账户余额</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <h2 className="text-xl font-bold mb-4">账户概览</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className={`p-4 rounded-lg border-2 ${parseFloat(tenantBalance.balance) <= 0 ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
                   <div className="text-sm text-gray-600">可用余额</div>
                   <div className={`text-2xl font-bold ${parseFloat(tenantBalance.balance) <= 0 ? 'text-red-600' : 'text-green-700'}`}>¥{parseFloat(tenantBalance.balance).toFixed(4)}</div>
@@ -899,6 +899,14 @@ function Dashboard() {
                 <div className="p-4 rounded-lg bg-orange-50 border border-orange-200">
                   <div className="text-sm text-gray-600">总消耗</div>
                   <div className="text-2xl font-bold text-orange-600">¥{tenantBalance.totalConsumed}</div>
+                </div>
+                <div className={`p-4 rounded-lg border-2 ${tenantBalance.activeConcurrency >= tenantBalance.concurrencyLimit ? 'bg-red-50 border-red-200' : 'bg-indigo-50 border-indigo-200'}`}>
+                  <div className="text-sm text-gray-600">并发限制</div>
+                  <div className="text-2xl font-bold">
+                    <span className={tenantBalance.activeConcurrency >= tenantBalance.concurrencyLimit ? 'text-red-600' : 'text-green-600'}>{tenantBalance.activeConcurrency}</span>
+                    <span className="text-gray-400 mx-1">/</span>
+                    <span className="text-indigo-700">{tenantBalance.concurrencyLimit}</span>
+                  </div>
                 </div>
               </div>
               {parseFloat(tenantBalance.balance) <= 0 && (

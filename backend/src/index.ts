@@ -193,7 +193,7 @@ app.post('/api/panel/admin/users/:id/balance', authMiddleware, adminMiddleware, 
 // Tenant: Get own balance
 app.get('/api/panel/balance', authMiddleware, async (c) => {
   const user = c.get('user') as any;
-  const dbUser = await db.select({ balance: schema.users.balance }).from(schema.users).where(eq(schema.users.id, user.id)).limit(1);
+  const dbUser = await db.select({ balance: schema.users.balance, concurrencyLimit: schema.users.concurrencyLimit }).from(schema.users).where(eq(schema.users.id, user.id)).limit(1);
   if (dbUser.length === 0) return c.json({ error: 'User not found' }, 404);
 
   // Get total consumed from usage_logs
@@ -206,10 +206,14 @@ app.get('/api/panel/balance', authMiddleware, async (c) => {
     totalTopUp: sql<string>`coalesce(sum(${schema.balanceAudit.amount}::numeric), 0)`,
   }).from(schema.balanceAudit).where(eq(schema.balanceAudit.userId, user.id));
 
+  const cc = concurrencyCache.get(user.id);
+
   return c.json({
     balance: dbUser[0]!.balance,
     totalTopUp: parseFloat(String(topUps[0]?.totalTopUp || '0')).toFixed(4),
     totalConsumed: parseFloat(String(consumed[0]?.totalCost || '0')).toFixed(4),
+    concurrencyLimit: dbUser[0]!.concurrencyLimit,
+    activeConcurrency: cc?.active || 0,
   });
 });
 
