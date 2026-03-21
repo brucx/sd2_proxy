@@ -1,12 +1,13 @@
-import { pgTable, serial, text, integer, timestamp, boolean, varchar, index } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, timestamp, boolean, varchar, index, numeric } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
   username: varchar('username', { length: 255 }).notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   role: varchar('role', { length: 50 }).notNull().default('tenant'), // 'admin' or 'tenant'
+  status: varchar('status', { length: 20 }).notNull().default('active'), // 'active' or 'suspended'
   concurrencyLimit: integer('concurrency_limit').notNull().default(3),
-  balance: text('balance').notNull().default('0'),
+  balance: numeric('balance', { precision: 20, scale: 4 }).notNull().default('0'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -71,7 +72,7 @@ export const ipWhitelist = pgTable('ip_whitelist', {
 export const balanceAudit = pgTable('balance_audit', {
   id: serial('id').primaryKey(),
   userId: integer('user_id').references(() => users.id).notNull(),
-  amount: text('amount').notNull(),
+  amount: numeric('amount', { precision: 20, scale: 4 }).notNull(),
   description: varchar('description', { length: 500 }).notNull().default(''),
   operatorId: integer('operator_id').references(() => users.id).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),

@@ -1,0 +1,192 @@
+import { Hono } from 'hono';
+import { db } from '../db/index.js';
+import * as schema from '../db/schema.js';
+import { eq, sql } from 'drizzle-orm';
+import { config } from '../config.js';
+import { calculateCost, detectVideoInput } from '../utils/cost.util.js';
+import { proxyAuthMiddleware } from '../middlewares/proxy.middleware.js';
+import { concurrencyCache } from '../services/concurrency.service.js';
+import type { AppVariables } from '../types.js';
+
+export const proxyRoutes = new Hono<{ Variables: AppVariables }>();
+
+proxyRoutes.post('/create', proxyAuthMiddleware, async (c) => {
+  const keyRecord = c.get('keyRecord');
+  const body = await c.req.json();
+  const startTime = Date.now();
+  const clientIp = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown';
+
+  // Balance check
+  const userId = keyRecord.userId;
+  const userRecord = await db.select({ balance: schema.users.balance }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+  if (userRecord.length > 0 && parseFloat(userRecord[0]!.balance) <= 0) {
+    return c.json({ error: '余额不足，请联系管理员充值' }, 403);
+  }
+
+  // Concurrency check
+  let cc = concurrencyCache.get(userId);
+  if (!cc) { cc = { limit: 3, active: 0 }; concurrencyCache.set(userId, cc); }
+  if (cc.active >= cc.limit) {
+    return c.json({ error: `并发数已达上限 (${cc.limit})，请稍后重试` }, 429);
+  }
+  cc.active++;
+
+  const originalBody = JSON.stringify(body);
+
+  const userModel = body.model;
+  const mappedModel = config.MODEL_MAPPING[userModel];
+  if (!mappedModel) {
+    cc.active--; 
+    return c.json({
+      error: `Unsupported model: "${userModel}". Supported models: ${Object.keys(config.MODEL_MAPPING).join(', ')}`
+    }, 400);
+  }
+  body.model = mappedModel;
+
+  try {
+    const upstreamRes = await fetch(`${config.UPSTREAM_URL}/api/v1/doubao/create`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.ARK_API_KEY}`
+      },
+      body: JSON.stringify(body)
+    });
+
+    const data: any = await upstreamRes.json();
+    const durationMs = Date.now() - startTime;
+    const responseBody = JSON.stringify(data);
+    const isVideoInput = detectVideoInput(JSON.parse(originalBody));
+
+    if (upstreamRes.ok && data.id) {
+      await db.insert(schema.usageLogs).values({
+        userId: keyRecord.userId,
+        keyId: keyRecord.id,
+        endpoint: '/create',
+        taskId: data.id,
+        hasVideoInput: isVideoInput,
+        status: 'pending'
+      });
+    } else {
+       cc.active--; // Upstream error, release concurrency immediately
+    }
+
+    db.insert(schema.requestLogs).values({
+      userId: keyRecord.userId,
+      keyId: keyRecord.id,
+      endpoint: '/create',
+      method: 'POST',
+      requestBody: originalBody,
+      responseBody,
+      responseStatus: upstreamRes.status,
+      durationMs,
+      ipAddress: clientIp,
+    }).catch(err => console.error('Request log insert error:', err));
+
+    c.status(upstreamRes.status as any);
+    return c.json(data);
+  } catch (error) {
+    console.error('Proxy Create Error:', error);
+    cc.active--; 
+    db.insert(schema.requestLogs).values({
+      userId: keyRecord.userId,
+      keyId: keyRecord.id,
+      endpoint: '/create',
+      method: 'POST',
+      requestBody: originalBody,
+      responseBody: JSON.stringify({ error: 'Internal Server Error' }),
+      responseStatus: 500,
+      durationMs: Date.now() - startTime,
+      ipAddress: clientIp,
+    }).catch(err => console.error('Request log insert error:', err));
+    return c.json({ error: 'Internal Server Error' }, 500);
+  }
+});
+
+proxyRoutes.post('/get_result', proxyAuthMiddleware, async (c) => {
+  const keyRecord = c.get('keyRecord');
+  const body = await c.req.json();
+  const startTime = Date.now();
+  const clientIp = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown';
+  const requestBodyStr = JSON.stringify(body);
+
+  try {
+    const upstreamRes = await fetch(`${config.UPSTREAM_URL}/api/v1/doubao/get_result`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.ARK_API_KEY}`
+      },
+      body: JSON.stringify(body)
+    });
+
+    const data: any = await upstreamRes.json();
+    const durationMs = Date.now() - startTime;
+    const responseBody = JSON.stringify(data);
+
+    if (upstreamRes.ok && data.status) {
+      if (data.status === 'succeeded' || data.status === 'failed') {
+        const completionTokens = data.usage?.completion_tokens || 0;
+        const existingLog = await db.select().from(schema.usageLogs).where(eq(schema.usageLogs.taskId, data.id)).limit(1);
+        
+        if (existingLog.length > 0) {
+            const hasVideo = existingLog[0]?.hasVideoInput ?? false;
+            const cost = data.status === 'succeeded' ? calculateCost(completionTokens, hasVideo) : '0';
+
+            // P0 Optimization: DB Transaction
+            await db.transaction(async (tx) => {
+              await tx.update(schema.usageLogs)
+                .set({
+                  status: data.status,
+                  completionTokens: completionTokens,
+                  costYuan: cost,
+                  resultData: JSON.stringify(data),
+                  updatedAt: new Date()
+                })
+                .where(eq(schema.usageLogs.taskId, data.id));
+
+              // Atomic balance deduction on success
+              if (data.status === 'succeeded' && parseFloat(cost) > 0) {
+                await tx.update(schema.users)
+                  .set({ balance: sql`${schema.users.balance} - ${cost}` })
+                  .where(eq(schema.users.id, existingLog[0]!.userId));
+              }
+            });
+
+            // Decrement concurrency
+            const ucc = concurrencyCache.get(existingLog[0]!.userId);
+            if (ucc && ucc.active > 0) ucc.active--;
+        }
+      }
+    }
+
+    db.insert(schema.requestLogs).values({
+      userId: keyRecord.userId,
+      keyId: keyRecord.id,
+      endpoint: '/get_result',
+      method: 'POST',
+      requestBody: requestBodyStr,
+      responseBody,
+      responseStatus: upstreamRes.status,
+      durationMs,
+      ipAddress: clientIp,
+    }).catch(err => console.error('Request log insert error:', err));
+
+    c.status(upstreamRes.status as any);
+    return c.json(data);
+  } catch (error) {
+    console.error('Proxy Get Result Error:', error);
+    db.insert(schema.requestLogs).values({
+      userId: keyRecord.userId,
+      keyId: keyRecord.id,
+      endpoint: '/get_result',
+      method: 'POST',
+      requestBody: requestBodyStr,
+      responseBody: JSON.stringify({ error: 'Internal Server Error' }),
+      responseStatus: 500,
+      durationMs: Date.now() - startTime,
+      ipAddress: clientIp,
+    }).catch(err => console.error('Request log insert error:', err));
+    return c.json({ error: 'Internal Server Error' }, 500);
+  }
+});
