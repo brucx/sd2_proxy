@@ -20,6 +20,14 @@ function Dashboard() {
   const role = localStorage.getItem('role');
   const [keys, setKeys] = useState<any[]>([]);
   const [usage, setUsage] = useState<any[]>([]);
+  const [usageTotal, setUsageTotal] = useState(0);
+  const [usagePage, setUsagePage] = useState(1);
+  const [usagePageSize] = useState(20);
+  const [usageUserFilter, setUsageUserFilter] = useState<string>('');
+  const [usageStartDate, setUsageStartDate] = useState('');
+  const [usageEndDate, setUsageEndDate] = useState('');
+  const [usageTotalTokens, setUsageTotalTokens] = useState(0);
+  const [usageTotalCost, setUsageTotalCost] = useState('0');
   const [users, setUsers] = useState<any[]>([]);
   const [adminKeys, setAdminKeys] = useState<any[]>([]);
   const [newKeyName, setNewKeyName] = useState('');
@@ -83,30 +91,66 @@ function Dashboard() {
   const fetchData = async () => {
     try {
       if (role === 'admin') {
-        const [usersRes, usageRes, keysRes] = await Promise.all([
+        const [usersRes, keysRes] = await Promise.all([
           api.get('/admin/users'),
-          api.get('/admin/usage'),
           api.get('/admin/keys')
         ]);
         setUsers(usersRes.data);
-        setUsage(usageRes.data);
         setAdminKeys(keysRes.data);
+        fetchUsage();
         fetchRequestLogs();
       } else {
-        const [keysRes, usageRes, whitelistRes] = await Promise.all([
+        const [keysRes, whitelistRes] = await Promise.all([
           api.get('/keys'),
-          api.get('/usage'),
           api.get('/whitelist')
         ]);
         setKeys(keysRes.data);
-        setUsage(usageRes.data);
         setWhitelist(whitelistRes.data);
+        fetchUsage();
       }
     } catch (err: any) {
       if (err.response?.status === 401) {
         localStorage.clear();
         navigate('/login');
       }
+    }
+  };
+
+  const fetchUsage = async (page = usagePage, userId = usageUserFilter, start = usageStartDate, end = usageEndDate) => {
+    try {
+      const params: any = { page, pageSize: usagePageSize };
+      if (userId) params.userId = userId;
+      if (start) params.startDate = start;
+      if (end) params.endDate = end;
+      const endpoint = role === 'admin' ? '/admin/usage' : '/usage';
+      const res = await api.get(endpoint, { params });
+      setUsage(res.data.logs);
+      setUsageTotal(res.data.total);
+      setUsagePage(res.data.page);
+      setUsageTotalTokens(res.data.totalTokens);
+      setUsageTotalCost(res.data.totalCost);
+    } catch (err) {
+      console.error('Failed to fetch usage', err);
+    }
+  };
+
+  const exportUsageCsv = async () => {
+    try {
+      const params: any = {};
+      if (usageUserFilter) params.userId = usageUserFilter;
+      if (usageStartDate) params.startDate = usageStartDate;
+      if (usageEndDate) params.endDate = usageEndDate;
+      const endpoint = role === 'admin' ? '/admin/usage/export' : '/usage/export';
+      const res = await api.get(endpoint, { params, responseType: 'blob' });
+      const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `usage_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export usage CSV', err);
     }
   };
 
@@ -393,20 +437,40 @@ function Dashboard() {
 
           <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
             <h2 className="text-xl font-bold mb-4">Global Usage Statistics</h2>
-            <div className="flex flex-wrap gap-4 mb-4">
-              <p className="font-medium text-lg text-green-700 bg-green-50 p-3 rounded-lg border border-green-200">Total Tokens: {usage.reduce((acc, curr) => acc + (curr.completionTokens || 0), 0)}</p>
-              <p className="font-medium text-lg text-blue-700 bg-blue-50 p-3 rounded-lg border border-blue-200">Total Cost: ¥{usage.reduce((acc, curr) => acc + parseFloat(curr.costYuan || '0'), 0).toFixed(4)}</p>
+            <div className="flex flex-col sm:flex-row gap-4 mb-4 sm:items-end flex-wrap">
+              <div className="w-full sm:w-auto">
+                <label className="block text-sm text-gray-600 mb-1">按用户筛选</label>
+                <select value={usageUserFilter} onChange={e => { setUsageUserFilter(e.target.value); fetchUsage(1, e.target.value, usageStartDate, usageEndDate); }} className="border px-3 py-2 rounded-md w-full sm:w-auto">
+                  <option value="">全部用户</option>
+                  {users.map(u => (<option key={u.id} value={u.id}>{u.username}</option>))}
+                </select>
+              </div>
+              <div className="w-full sm:w-auto">
+                <label className="block text-sm text-gray-600 mb-1">开始日期</label>
+                <input type="date" value={usageStartDate} onChange={e => { setUsageStartDate(e.target.value); fetchUsage(1, usageUserFilter, e.target.value, usageEndDate); }} className="border px-3 py-2 rounded-md w-full sm:w-auto" />
+              </div>
+              <div className="w-full sm:w-auto">
+                <label className="block text-sm text-gray-600 mb-1">结束日期</label>
+                <input type="date" value={usageEndDate} onChange={e => { setUsageEndDate(e.target.value); fetchUsage(1, usageUserFilter, usageStartDate, e.target.value); }} className="border px-3 py-2 rounded-md w-full sm:w-auto" />
+              </div>
+              <button onClick={() => fetchUsage(usagePage, usageUserFilter, usageStartDate, usageEndDate)} className="bg-gray-600 text-white px-4 py-2 rounded-md h-fit text-sm w-full sm:w-auto">刷新</button>
+              <button onClick={exportUsageCsv} className="bg-green-600 text-white px-4 py-2 rounded-md h-fit text-sm w-full sm:w-auto">导出 CSV</button>
             </div>
+            <div className="flex flex-wrap gap-4 mb-4">
+              <p className="font-medium text-lg text-green-700 bg-green-50 p-3 rounded-lg border border-green-200">Total Tokens: {usageTotalTokens}</p>
+              <p className="font-medium text-lg text-blue-700 bg-blue-50 p-3 rounded-lg border border-blue-200">Total Cost: ¥{usageTotalCost}</p>
+            </div>
+            <div className="text-sm text-gray-500 mb-2">共 {usageTotal} 条记录</div>
             {/* Desktop Table */}
             <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-sm hidden md:table">
               <thead>
-                <tr className="border-b bg-gray-50"><th className="p-2">User ID</th><th className="p-2">Key ID</th><th className="p-2">Task ID</th><th className="p-2">Tokens</th><th className="p-2">输入类型</th><th className="p-2">单价(元/百万)</th><th className="p-2">费用(元)</th><th className="p-2">Status</th></tr>
+                <tr className="border-b bg-gray-50"><th className="p-2">用户</th><th className="p-2">Key ID</th><th className="p-2">Task ID</th><th className="p-2">Tokens</th><th className="p-2">输入类型</th><th className="p-2">单价(元/百万)</th><th className="p-2">费用(元)</th><th className="p-2">Status</th><th className="p-2">时间</th></tr>
               </thead>
               <tbody>
                 {usage.map(u => (
                   <tr key={u.id} className="border-b">
-                    <td className="p-2">{u.userId}</td>
+                    <td className="p-2">{u.username}</td>
                     <td className="p-2">{u.keyId}</td>
                     <td className="p-2 font-mono text-xs">{u.taskId}</td>
                     <td className="p-2">{u.completionTokens}</td>
@@ -418,6 +482,7 @@ function Dashboard() {
                     <td className="p-2">{u.hasVideoInput ? '28' : '46'}</td>
                     <td className="p-2 font-semibold text-orange-600">¥{parseFloat(u.costYuan || '0').toFixed(4)}</td>
                     <td className="p-2">{u.status}</td>
+                    <td className="p-2 whitespace-nowrap">{new Date(u.createdAt).toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
@@ -428,12 +493,12 @@ function Dashboard() {
               {usage.map(u => (
                 <div key={u.id} className="border border-gray-100 rounded-lg p-4 bg-gray-50 shadow-sm flex flex-col gap-2">
                   <div className="flex justify-between items-center">
-                    <span className="font-semibold text-gray-800">User ID: {u.userId}</span>
+                    <span className="font-semibold text-gray-800">{u.username}</span>
                     <span className="text-xs font-semibold px-2 py-1 rounded bg-blue-100 text-blue-800">{u.status}</span>
                   </div>
                   <div className="text-sm text-gray-600 break-all">Task ID: <span className="font-mono text-xs">{u.taskId}</span></div>
                   <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600">Key ID: {u.keyId}</span>
+                    <span className="text-gray-500 text-xs">{new Date(u.createdAt).toLocaleString()}</span>
                     <span className="font-semibold text-green-600">Tokens: {u.completionTokens}</span>
                   </div>
                   <div className="flex justify-between items-center text-sm pt-1 border-t border-gray-200">
@@ -444,6 +509,16 @@ function Dashboard() {
                   </div>
                 </div>
               ))}
+            </div>
+            {/* Pagination */}
+            <div className="flex items-center justify-between mt-4">
+              <div className="text-sm text-gray-500">
+                第 {usagePage} 页 / 共 {Math.ceil(usageTotal / usagePageSize)} 页
+              </div>
+              <div className="space-x-2">
+                <button disabled={usagePage <= 1} onClick={() => fetchUsage(usagePage - 1, usageUserFilter, usageStartDate, usageEndDate)} className="px-3 py-1 border rounded-md text-sm disabled:opacity-40">上一页</button>
+                <button disabled={usagePage >= Math.ceil(usageTotal / usagePageSize)} onClick={() => fetchUsage(usagePage + 1, usageUserFilter, usageStartDate, usageEndDate)} className="px-3 py-1 border rounded-md text-sm disabled:opacity-40">下一页</button>
+              </div>
             </div>
           </div>
 
@@ -727,19 +802,32 @@ function Dashboard() {
 
           <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
             <h2 className="text-xl font-bold mb-4">Usage Statistics</h2>
+            <div className="flex flex-col sm:flex-row gap-4 mb-4 sm:items-end flex-wrap">
+              <div className="w-full sm:w-auto">
+                <label className="block text-sm text-gray-600 mb-1">开始日期</label>
+                <input type="date" value={usageStartDate} onChange={e => { setUsageStartDate(e.target.value); fetchUsage(1, '', e.target.value, usageEndDate); }} className="border px-3 py-2 rounded-md w-full sm:w-auto" />
+              </div>
+              <div className="w-full sm:w-auto">
+                <label className="block text-sm text-gray-600 mb-1">结束日期</label>
+                <input type="date" value={usageEndDate} onChange={e => { setUsageEndDate(e.target.value); fetchUsage(1, '', usageStartDate, e.target.value); }} className="border px-3 py-2 rounded-md w-full sm:w-auto" />
+              </div>
+              <button onClick={() => fetchUsage(usagePage, '', usageStartDate, usageEndDate)} className="bg-gray-600 text-white px-4 py-2 rounded-md h-fit text-sm w-full sm:w-auto">刷新</button>
+              <button onClick={exportUsageCsv} className="bg-green-600 text-white px-4 py-2 rounded-md h-fit text-sm w-full sm:w-auto">导出 CSV</button>
+            </div>
             <div className="flex flex-wrap gap-4 mb-4">
               <p className="font-medium text-lg text-green-700 bg-green-50 p-3 rounded-lg border border-green-200">
-                Total Tokens: {usage.reduce((acc, curr) => acc + (curr.completionTokens || 0), 0)}
+                Total Tokens: {usageTotalTokens}
               </p>
               <p className="font-medium text-lg text-blue-700 bg-blue-50 p-3 rounded-lg border border-blue-200">
-                Total Cost: ¥{usage.reduce((acc, curr) => acc + parseFloat(curr.costYuan || '0'), 0).toFixed(4)}
+                Total Cost: ¥{usageTotalCost}
               </p>
             </div>
+            <div className="text-sm text-gray-500 mb-2">共 {usageTotal} 条记录</div>
             {/* Desktop Table */}
             <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-sm hidden md:table">
               <thead>
-                <tr className="border-b bg-gray-50"><th className="p-2">Endpoint</th><th className="p-2">Task ID</th><th className="p-2">Tokens</th><th className="p-2">输入类型</th><th className="p-2">单价(元/百万)</th><th className="p-2">费用(元)</th><th className="p-2">Status</th><th className="p-2">Time</th></tr>
+                <tr className="border-b bg-gray-50"><th className="p-2">Endpoint</th><th className="p-2">Task ID</th><th className="p-2">Tokens</th><th className="p-2">输入类型</th><th className="p-2">单价(元/百万)</th><th className="p-2">费用(元)</th><th className="p-2">Status</th><th className="p-2">时间</th></tr>
               </thead>
               <tbody>
                 {usage.map(u => (
@@ -755,7 +843,7 @@ function Dashboard() {
                     <td className="p-2">{u.hasVideoInput ? '28' : '46'}</td>
                     <td className="p-2 font-semibold text-orange-600">¥{parseFloat(u.costYuan || '0').toFixed(4)}</td>
                     <td className="p-2">{u.status}</td>
-                    <td className="p-2">{new Date(u.createdAt).toLocaleString()}</td>
+                    <td className="p-2 whitespace-nowrap">{new Date(u.createdAt).toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
@@ -787,6 +875,16 @@ function Dashboard() {
                   </div>
                 </div>
               ))}
+            </div>
+            {/* Pagination */}
+            <div className="flex items-center justify-between mt-4">
+              <div className="text-sm text-gray-500">
+                第 {usagePage} 页 / 共 {Math.ceil(usageTotal / usagePageSize)} 页
+              </div>
+              <div className="space-x-2">
+                <button disabled={usagePage <= 1} onClick={() => fetchUsage(usagePage - 1, '', usageStartDate, usageEndDate)} className="px-3 py-1 border rounded-md text-sm disabled:opacity-40">上一页</button>
+                <button disabled={usagePage >= Math.ceil(usageTotal / usagePageSize)} onClick={() => fetchUsage(usagePage + 1, '', usageStartDate, usageEndDate)} className="px-3 py-1 border rounded-md text-sm disabled:opacity-40">下一页</button>
+              </div>
             </div>
           </div>
         </div>

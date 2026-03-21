@@ -6,7 +6,7 @@ import { cors } from 'hono/cors';
 import { config } from 'dotenv';
 import { db } from './db/index.js';
 import * as schema from './db/schema.js';
-import { eq, desc, sql } from 'drizzle-orm';
+import { eq, desc, sql, and, gte, lte } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import cron from 'node-cron';
@@ -159,17 +159,205 @@ app.post('/api/panel/keys', authMiddleware, async (c) => {
   return c.json({ success: true, apiKey });
 });
 
-// Tenant: Get Usage
+// Tenant: Get Usage (with pagination & date filter)
 app.get('/api/panel/usage', authMiddleware, async (c) => {
   const user = c.get('user') as any;
-  const logs = await db.select().from(schema.usageLogs).where(eq(schema.usageLogs.userId, user.id));
-  return c.json(logs);
+  const page = parseInt(c.req.query('page') || '1');
+  const pageSize = parseInt(c.req.query('pageSize') || '20');
+  const startDate = c.req.query('startDate');
+  const endDate = c.req.query('endDate');
+  const offset = (page - 1) * pageSize;
+
+  try {
+    const conditions: any[] = [eq(schema.usageLogs.userId, user.id)];
+    if (startDate) conditions.push(gte(schema.usageLogs.createdAt, new Date(startDate)));
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(schema.usageLogs.createdAt, end));
+    }
+    const where = and(...conditions);
+
+    const countResult = await db.select({ count: sql<number>`count(*)` }).from(schema.usageLogs).where(where);
+    const total = Number(countResult[0]?.count || 0);
+
+    const totalsResult = await db.select({
+      totalTokens: sql<number>`coalesce(sum(${schema.usageLogs.completionTokens}), 0)`,
+      totalCost: sql<string>`coalesce(sum(${schema.usageLogs.costYuan}::numeric), 0)`,
+    }).from(schema.usageLogs).where(where);
+
+    const logs = await db.select().from(schema.usageLogs)
+      .where(where)
+      .orderBy(desc(schema.usageLogs.createdAt))
+      .limit(pageSize)
+      .offset(offset);
+
+    return c.json({
+      logs, total, page, pageSize,
+      totalTokens: Number(totalsResult[0]?.totalTokens || 0),
+      totalCost: parseFloat(String(totalsResult[0]?.totalCost || '0')).toFixed(4),
+    });
+  } catch (error) {
+    console.error('Tenant usage query error:', error);
+    return c.json({ error: 'Internal Server Error' }, 500);
+  }
 });
 
-// Admin: Get All Usage
+// Tenant: Export Usage CSV
+app.get('/api/panel/usage/export', authMiddleware, async (c) => {
+  const user = c.get('user') as any;
+  const startDate = c.req.query('startDate');
+  const endDate = c.req.query('endDate');
+
+  try {
+    const conditions: any[] = [eq(schema.usageLogs.userId, user.id)];
+    if (startDate) conditions.push(gte(schema.usageLogs.createdAt, new Date(startDate)));
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(schema.usageLogs.createdAt, end));
+    }
+
+    const logs = await db.select().from(schema.usageLogs)
+      .where(and(...conditions))
+      .orderBy(desc(schema.usageLogs.createdAt));
+
+    const header = 'ID,KeyID,Endpoint,TaskID,Tokens,InputType,UnitPrice,Cost(CNY),Status,CreatedAt';
+    const rows = logs.map(u =>
+      [u.id, u.keyId, u.endpoint, u.taskId || '', u.completionTokens || 0,
+       u.hasVideoInput ? '含视频' : '纯文本', u.hasVideoInput ? 28 : 46,
+       u.costYuan, u.status, new Date(u.createdAt).toISOString()].join(',')
+    );
+    const csv = '\uFEFF' + [header, ...rows].join('\n');
+
+    c.header('Content-Type', 'text/csv; charset=utf-8');
+    c.header('Content-Disposition', `attachment; filename="usage_${new Date().toISOString().slice(0,10)}.csv"`);
+    return c.body(csv);
+  } catch (error) {
+    console.error('Tenant usage export error:', error);
+    return c.json({ error: 'Internal Server Error' }, 500);
+  }
+});
+
+// Admin: Get All Usage (with pagination, user & date filter)
 app.get('/api/panel/admin/usage', authMiddleware, adminMiddleware, async (c) => {
-  const logs = await db.select().from(schema.usageLogs);
-  return c.json(logs);
+  const page = parseInt(c.req.query('page') || '1');
+  const pageSize = parseInt(c.req.query('pageSize') || '20');
+  const userIdFilter = c.req.query('userId');
+  const startDate = c.req.query('startDate');
+  const endDate = c.req.query('endDate');
+  const offset = (page - 1) * pageSize;
+
+  try {
+    const conditions: any[] = [];
+    if (userIdFilter) conditions.push(eq(schema.usageLogs.userId, parseInt(userIdFilter)));
+    if (startDate) conditions.push(gte(schema.usageLogs.createdAt, new Date(startDate)));
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(schema.usageLogs.createdAt, end));
+    }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const countResult = where
+      ? await db.select({ count: sql<number>`count(*)` }).from(schema.usageLogs).where(where)
+      : await db.select({ count: sql<number>`count(*)` }).from(schema.usageLogs);
+    const total = Number(countResult[0]?.count || 0);
+
+    const totalsResult = where
+      ? await db.select({
+          totalTokens: sql<number>`coalesce(sum(${schema.usageLogs.completionTokens}), 0)`,
+          totalCost: sql<string>`coalesce(sum(${schema.usageLogs.costYuan}::numeric), 0)`,
+        }).from(schema.usageLogs).where(where)
+      : await db.select({
+          totalTokens: sql<number>`coalesce(sum(${schema.usageLogs.completionTokens}), 0)`,
+          totalCost: sql<string>`coalesce(sum(${schema.usageLogs.costYuan}::numeric), 0)`,
+        }).from(schema.usageLogs);
+
+    let query = db
+      .select({
+        id: schema.usageLogs.id,
+        userId: schema.usageLogs.userId,
+        username: schema.users.username,
+        keyId: schema.usageLogs.keyId,
+        endpoint: schema.usageLogs.endpoint,
+        taskId: schema.usageLogs.taskId,
+        completionTokens: schema.usageLogs.completionTokens,
+        hasVideoInput: schema.usageLogs.hasVideoInput,
+        costYuan: schema.usageLogs.costYuan,
+        status: schema.usageLogs.status,
+        createdAt: schema.usageLogs.createdAt,
+      })
+      .from(schema.usageLogs)
+      .innerJoin(schema.users, eq(schema.usageLogs.userId, schema.users.id))
+      .orderBy(desc(schema.usageLogs.createdAt))
+      .limit(pageSize)
+      .offset(offset);
+
+    const logs = where ? await (query as any).where(where) : await query;
+
+    return c.json({
+      logs, total, page, pageSize,
+      totalTokens: Number(totalsResult[0]?.totalTokens || 0),
+      totalCost: parseFloat(String(totalsResult[0]?.totalCost || '0')).toFixed(4),
+    });
+  } catch (error) {
+    console.error('Admin usage query error:', error);
+    return c.json({ error: 'Internal Server Error' }, 500);
+  }
+});
+
+// Admin: Export Usage CSV
+app.get('/api/panel/admin/usage/export', authMiddleware, adminMiddleware, async (c) => {
+  const userIdFilter = c.req.query('userId');
+  const startDate = c.req.query('startDate');
+  const endDate = c.req.query('endDate');
+
+  try {
+    const conditions: any[] = [];
+    if (userIdFilter) conditions.push(eq(schema.usageLogs.userId, parseInt(userIdFilter)));
+    if (startDate) conditions.push(gte(schema.usageLogs.createdAt, new Date(startDate)));
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(schema.usageLogs.createdAt, end));
+    }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    let query = db
+      .select({
+        id: schema.usageLogs.id,
+        username: schema.users.username,
+        keyId: schema.usageLogs.keyId,
+        endpoint: schema.usageLogs.endpoint,
+        taskId: schema.usageLogs.taskId,
+        completionTokens: schema.usageLogs.completionTokens,
+        hasVideoInput: schema.usageLogs.hasVideoInput,
+        costYuan: schema.usageLogs.costYuan,
+        status: schema.usageLogs.status,
+        createdAt: schema.usageLogs.createdAt,
+      })
+      .from(schema.usageLogs)
+      .innerJoin(schema.users, eq(schema.usageLogs.userId, schema.users.id))
+      .orderBy(desc(schema.usageLogs.createdAt));
+
+    const logs = where ? await (query as any).where(where) : await query;
+
+    const header = 'ID,Username,KeyID,Endpoint,TaskID,Tokens,InputType,UnitPrice,Cost(CNY),Status,CreatedAt';
+    const rows = logs.map((u: any) =>
+      [u.id, u.username, u.keyId, u.endpoint, u.taskId || '', u.completionTokens || 0,
+       u.hasVideoInput ? '含视频' : '纯文本', u.hasVideoInput ? 28 : 46,
+       u.costYuan, u.status, new Date(u.createdAt).toISOString()].join(',')
+    );
+    const csv = '\uFEFF' + [header, ...rows].join('\n');
+
+    c.header('Content-Type', 'text/csv; charset=utf-8');
+    c.header('Content-Disposition', `attachment; filename="usage_all_${new Date().toISOString().slice(0,10)}.csv"`);
+    return c.body(csv);
+  } catch (error) {
+    console.error('Admin usage export error:', error);
+    return c.json({ error: 'Internal Server Error' }, 500);
+  }
 });
 
 // Admin: Get Request Logs (with pagination & user filter)
