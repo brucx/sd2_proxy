@@ -216,6 +216,44 @@ app.get('/api/panel/balance', authMiddleware, async (c) => {
   });
 });
 
+// Tenant: Get recharge records (balance audit)
+app.get('/api/panel/balance/records', authMiddleware, async (c) => {
+  const user = c.get('user') as any;
+  const page = parseInt(c.req.query('page') || '1');
+  const pageSize = parseInt(c.req.query('pageSize') || '20');
+  const offset = (page - 1) * pageSize;
+
+  try {
+    const where = eq(schema.balanceAudit.userId, user.id);
+
+    const countResult = await db.select({ count: sql<number>`count(*)` }).from(schema.balanceAudit).where(where);
+    const total = Number(countResult[0]?.count || 0);
+
+    // Create an alias for the operator user
+    const operatorUser = schema.users;
+
+    const records = await db
+      .select({
+        id: schema.balanceAudit.id,
+        amount: schema.balanceAudit.amount,
+        description: schema.balanceAudit.description,
+        operatorName: operatorUser.username,
+        createdAt: schema.balanceAudit.createdAt,
+      })
+      .from(schema.balanceAudit)
+      .innerJoin(operatorUser, eq(schema.balanceAudit.operatorId, operatorUser.id))
+      .where(where)
+      .orderBy(desc(schema.balanceAudit.createdAt))
+      .limit(pageSize)
+      .offset(offset);
+
+    return c.json({ records, total, page, pageSize });
+  } catch (error) {
+    console.error('Balance records query error:', error);
+    return c.json({ error: 'Internal Server Error' }, 500);
+  }
+});
+
 // Tenant: Get keys (exclude soft-deleted)
 app.get('/api/panel/keys', authMiddleware, async (c) => {
   const user = c.get('user') as any;

@@ -77,6 +77,12 @@ function Dashboard() {
   const [topUpMsg, setTopUpMsg] = useState('');
   const [tenantBalance, setTenantBalance] = useState<{balance: string, totalTopUp: string, totalConsumed: string, concurrencyLimit: number, activeConcurrency: number} | null>(null);
 
+  // Recharge records state (tenant)
+  const [rechargeRecords, setRechargeRecords] = useState<any[]>([]);
+  const [rechargeTotal, setRechargeTotal] = useState(0);
+  const [rechargePage, setRechargePage] = useState(1);
+  const [rechargePageSize] = useState(10);
+
   const copyKey = useCallback(async (keyId: number, apiKey: string) => {
     try {
       await navigator.clipboard.writeText(apiKey);
@@ -124,6 +130,7 @@ function Dashboard() {
         setWhitelist(whitelistRes.data);
         setTenantBalance(balanceRes.data);
         fetchUsage();
+        fetchRechargeRecords();
       }
     } catch (err: any) {
       if (err.response?.status === 401) {
@@ -149,6 +156,17 @@ function Dashboard() {
       setUsageKeySummary(res.data.keySummary || []);
     } catch (err) {
       console.error('Failed to fetch usage', err);
+    }
+  };
+
+  const fetchRechargeRecords = async (page = rechargePage) => {
+    try {
+      const res = await api.get('/balance/records', { params: { page, pageSize: rechargePageSize } });
+      setRechargeRecords(res.data.records);
+      setRechargeTotal(res.data.total);
+      setRechargePage(res.data.page);
+    } catch (err) {
+      console.error('Failed to fetch recharge records', err);
     }
   };
 
@@ -914,6 +932,60 @@ function Dashboard() {
               )}
             </div>
           )}
+
+          {/* Recharge Records Section */}
+          <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
+            <h2 className="text-xl font-bold mb-4">充值记录</h2>
+            {rechargeRecords.length === 0 ? (
+              <p className="text-gray-400 text-sm">暂无充值记录</p>
+            ) : (
+              <>
+                <div className="text-sm text-gray-500 mb-2">共 {rechargeTotal} 条记录</div>
+                {/* Desktop Table */}
+                <table className="w-full text-left border-collapse text-sm hidden md:table">
+                  <thead>
+                    <tr className="border-b bg-gray-50"><th className="p-2">金额(元)</th><th className="p-2">备注</th><th className="p-2">操作人</th><th className="p-2">时间</th></tr>
+                  </thead>
+                  <tbody>
+                    {rechargeRecords.map(r => (
+                      <tr key={r.id} className="border-b">
+                        <td className="p-2 font-semibold text-green-600">+¥{parseFloat(r.amount).toFixed(2)}</td>
+                        <td className="p-2 text-gray-600">{r.description || '-'}</td>
+                        <td className="p-2">{r.operatorName}</td>
+                        <td className="p-2 whitespace-nowrap">{new Date(r.createdAt).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {/* Mobile Cards */}
+                <div className="md:hidden grid gap-3">
+                  {rechargeRecords.map(r => (
+                    <div key={r.id} className="border border-gray-100 rounded-lg p-3 bg-gray-50 shadow-sm">
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold text-green-600 text-lg">+¥{parseFloat(r.amount).toFixed(2)}</span>
+                        <span className="text-xs text-gray-500">{new Date(r.createdAt).toLocaleString()}</span>
+                      </div>
+                      <div className="text-sm text-gray-600 mt-1">{r.description || '-'}</div>
+                      <div className="text-xs text-gray-400 mt-1">操作人: {r.operatorName}</div>
+                    </div>
+                  ))}
+                </div>
+                {/* Pagination */}
+                {rechargeTotal > rechargePageSize && (
+                  <div className="flex items-center justify-between mt-4">
+                    <div className="text-sm text-gray-500">
+                      第 {rechargePage} 页 / 共 {Math.ceil(rechargeTotal / rechargePageSize)} 页
+                    </div>
+                    <div className="space-x-2">
+                      <button disabled={rechargePage <= 1} onClick={() => fetchRechargeRecords(rechargePage - 1)} className="px-3 py-1 border rounded-md text-sm disabled:opacity-40">上一页</button>
+                      <button disabled={rechargePage >= Math.ceil(rechargeTotal / rechargePageSize)} onClick={() => fetchRechargeRecords(rechargePage + 1)} className="px-3 py-1 border rounded-md text-sm disabled:opacity-40">下一页</button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
           <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
             <h2 className="text-xl font-bold mb-4">API Keys</h2>
             <div className="flex flex-col sm:flex-row gap-4 mb-4">
