@@ -32,8 +32,8 @@ function Playground() {
   const [loading, setLoading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
-  const [showCurl, setShowCurl] = useState(false);
-  const [showResponseExample, setShowResponseExample] = useState(false);
+  const [showCurl, setShowCurl] = useState(true);
+  const [showResponseExample, setShowResponseExample] = useState(true);
   const [curlCopied, setCurlCopied] = useState(false);
 
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
