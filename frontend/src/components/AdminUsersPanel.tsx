@@ -54,10 +54,10 @@ export default function AdminUsersPanel({ users, onRefresh }: Props) {
   const adminTopUp = async (userId: number) => {
     setTopUpMsg('');
     const num = parseFloat(topUpAmount);
-    if (isNaN(num) || num <= 0) { setTopUpMsg('金额必须大于 0'); return; }
+    if (isNaN(num) || num === 0) { setTopUpMsg('金额不能为 0'); return; }
     try {
-      await api.post(`/admin/users/${userId}/balance`, { amount: topUpAmount, description: topUpDesc || '管理员充值' });
-      setTopUpMsg('充值成功！');
+      await api.post(`/admin/users/${userId}/balance`, { amount: topUpAmount, description: topUpDesc || (num > 0 ? '管理员充值' : '管理员扣费') });
+      setTopUpMsg(num > 0 ? '充值成功！' : '扣费成功！');
       setTopUpAmount(''); setTopUpDesc('');
       onRefresh();
       setTimeout(() => { setTopUpUserId(null); setTopUpMsg(''); }, 1500);
@@ -100,7 +100,7 @@ export default function AdminUsersPanel({ users, onRefresh }: Props) {
                 {topUpUserId === u.id ? (
                   <div className="flex flex-col gap-1 mt-1">
                     <div className="flex gap-1 items-center">
-                      <input type="number" step="0.01" min="0.01" placeholder="金额" value={topUpAmount} onChange={e => setTopUpAmount(e.target.value)} className="border px-2 py-1 rounded-md text-sm w-20" />
+                      <input type="number" step="0.01" placeholder="金额(负值为扣费)" value={topUpAmount} onChange={e => setTopUpAmount(e.target.value)} className="border px-2 py-1 rounded-md text-sm w-28" />
                       <input type="text" placeholder="备注(可选)" value={topUpDesc} onChange={e => setTopUpDesc(e.target.value)} className="border px-2 py-1 rounded-md text-sm w-24" />
                       <button onClick={() => adminTopUp(u.id)} className="bg-green-600 text-white px-2 py-1 rounded-md text-xs">确认</button>
                       <button onClick={() => { setTopUpUserId(null); setTopUpMsg(''); }} className="text-gray-500 hover:underline text-xs">取消</button>
@@ -108,7 +108,7 @@ export default function AdminUsersPanel({ users, onRefresh }: Props) {
                     {topUpMsg && <span className={`text-xs ${topUpMsg.includes('成功') ? 'text-green-600' : 'text-red-500'}`}>{topUpMsg}</span>}
                   </div>
                 ) : (
-                  <button onClick={() => { setTopUpUserId(u.id); setTopUpAmount(''); setTopUpDesc(''); setTopUpMsg(''); }} className="text-green-600 hover:underline text-xs ml-2">充值</button>
+                <button onClick={() => { setTopUpUserId(u.id); setTopUpAmount(''); setTopUpDesc(''); setTopUpMsg(''); }} className="text-green-600 hover:underline text-xs ml-2">充值/扣费</button>
                 )}
               </td>
               <td className="p-2">

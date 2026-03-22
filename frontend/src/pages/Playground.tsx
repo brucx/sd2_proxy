@@ -25,8 +25,7 @@ function Playground() {
   const [ratio, setRatio] = useState('adaptive');
   const [resolution, setResolution] = useState('720p');
   const [duration, setDuration] = useState(5);
-  const [watermark, setWatermark] = useState(false);
-  const [webSearch, setWebSearch] = useState(false);
+
   const [response, setResponse] = useState<any>(null);
   const [taskId, setTaskId] = useState('');
   const [loading, setLoading] = useState(false);
@@ -166,18 +165,13 @@ function Playground() {
       generate_audio: generateAudio,
       ratio,
       resolution,
-      duration,
-      watermark
+      duration
     };
-
-    if (webSearch) {
-      body.tools = [{ type: 'web_search' }];
-    }
 
     return body;
   };
 
-  const requestBody = useMemo(() => buildRequestBody(), [model, prompt, refImages, refVideos, refAudios, generateAudio, ratio, resolution, duration, watermark, webSearch]);
+  const requestBody = useMemo(() => buildRequestBody(), [model, prompt, refImages, refVideos, refAudios, generateAudio, ratio, resolution, duration]);
 
   const handleCreate = async () => {
     setLoading(true);
@@ -317,7 +311,7 @@ function Playground() {
                   <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">generate_audio</td><td className="px-2 py-1.5 border border-gray-200">boolean</td><td className="px-2 py-1.5 border border-gray-200">true</td><td className="px-2 py-1.5 border border-gray-200">控制视频是否包含同步声音（人声/音效/BGM）</td></tr>
                   <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">resolution</td><td className="px-2 py-1.5 border border-gray-200">string</td><td className="px-2 py-1.5 border border-gray-200">720p</td><td className="px-2 py-1.5 border border-gray-200">视频分辨率，支持 480p / 720p</td></tr>
                   <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">ratio</td><td className="px-2 py-1.5 border border-gray-200">string</td><td className="px-2 py-1.5 border border-gray-200">adaptive</td><td className="px-2 py-1.5 border border-gray-200">宽高比：16:9, 4:3, 1:1, 3:4, 9:16, 21:9, adaptive</td></tr>
-                  <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">duration</td><td className="px-2 py-1.5 border border-gray-200">integer</td><td className="px-2 py-1.5 border border-gray-200">5</td><td className="px-2 py-1.5 border border-gray-200">视频时长 [4,15] 秒，-1 为模型自动选择</td></tr>
+                  <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">duration</td><td className="px-2 py-1.5 border border-gray-200">integer</td><td className="px-2 py-1.5 border border-gray-200">5</td><td className="px-2 py-1.5 border border-gray-200">视频时长 [5,15] 秒</td></tr>
                   <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">watermark</td><td className="px-2 py-1.5 border border-gray-200">boolean</td><td className="px-2 py-1.5 border border-gray-200">-</td><td className="px-2 py-1.5 border border-gray-200">是否添加水印</td></tr>
                   <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">tools</td><td className="px-2 py-1.5 border border-gray-200">object[]</td><td className="px-2 py-1.5 border border-gray-200">-</td><td className="px-2 py-1.5 border border-gray-200">web_search 联网搜索工具，提升时效性</td></tr>
                 </tbody>
@@ -407,8 +401,8 @@ function Playground() {
             <input
               type="number"
               value={duration}
-              onChange={(e) => setDuration(parseInt(e.target.value) || 5)}
-              min={-1}
+              onChange={(e) => { const v = parseInt(e.target.value); setDuration(isNaN(v) ? 5 : Math.min(15, Math.max(5, v))); }}
+              min={5}
               max={15}
               className="w-20 px-2 py-1.5 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all"
             />
@@ -424,26 +418,7 @@ function Playground() {
               <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${generateAudio ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
           </div>
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-gray-700">💧 Watermark</label>
-            <button
-              type="button"
-              onClick={() => setWatermark(!watermark)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${watermark ? 'bg-blue-600' : 'bg-gray-300'}`}
-            >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${watermark ? 'translate-x-6' : 'translate-x-1'}`} />
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-gray-700">🔍 Web Search</label>
-            <button
-              type="button"
-              onClick={() => setWebSearch(!webSearch)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${webSearch ? 'bg-blue-600' : 'bg-gray-300'}`}
-            >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${webSearch ? 'translate-x-6' : 'translate-x-1'}`} />
-            </button>
-          </div>
+
         </div>
       </div>
 

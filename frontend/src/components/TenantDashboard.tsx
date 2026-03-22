@@ -124,7 +124,7 @@ export default function TenantDashboard({
               <tbody>
                 {rechargeRecords.map(r => (
                   <tr key={r.id} className="border-b">
-                    <td className="p-2 font-semibold text-green-600">+¥{parseFloat(r.amount).toFixed(2)}</td>
+                    <td className={`p-2 font-semibold ${parseFloat(r.amount) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{parseFloat(r.amount) >= 0 ? '+' : ''}¥{parseFloat(r.amount).toFixed(2)}</td>
                     <td className="p-2 text-gray-600">{r.description || '-'}</td>
                     <td className="p-2">{r.operatorName}</td>
                     <td className="p-2 whitespace-nowrap">{new Date(r.createdAt).toLocaleString()}</td>
@@ -136,7 +136,7 @@ export default function TenantDashboard({
               {rechargeRecords.map(r => (
                 <div key={r.id} className="border border-gray-100 rounded-lg p-3 bg-gray-50 shadow-sm">
                   <div className="flex justify-between items-center">
-                    <span className="font-semibold text-green-600 text-lg">+¥{parseFloat(r.amount).toFixed(2)}</span>
+                    <span className={`font-semibold text-lg ${parseFloat(r.amount) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{parseFloat(r.amount) >= 0 ? '+' : ''}¥{parseFloat(r.amount).toFixed(2)}</span>
                     <span className="text-xs text-gray-500">{new Date(r.createdAt).toLocaleString()}</span>
                   </div>
                   <div className="text-sm text-gray-600 mt-1">{r.description || '-'}</div>

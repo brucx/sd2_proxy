@@ -162,8 +162,8 @@ adminRoutes.post('/users/:id/balance', async (c) => {
   const { amount, description } = await c.req.json();
 
   const numAmount = parseFloat(amount);
-  if (isNaN(numAmount) || numAmount <= 0) {
-    return c.json({ error: '充值金额必须大于 0' }, 400);
+  if (isNaN(numAmount) || numAmount === 0) {
+    return c.json({ error: '金额不能为 0' }, 400);
   }
 
   const targetUser = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
@@ -175,7 +175,7 @@ adminRoutes.post('/users/:id/balance', async (c) => {
     await tx.insert(schema.balanceAudit).values({
       userId,
       amount: numAmount.toFixed(4),
-      description: description || '管理员充值',
+      description: description || (numAmount > 0 ? '管理员充值' : '管理员扣费'),
       operatorId: adminUser.id,
     });
 
