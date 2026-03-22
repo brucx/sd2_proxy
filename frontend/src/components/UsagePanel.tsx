@@ -136,8 +136,7 @@ export default function UsagePanel({ role, users }: Props) {
             <tr className="border-b bg-gray-50">
               <th className="p-2"></th>
               {isAdmin && <th className="p-2">用户</th>}
-              {!isAdmin && <th className="p-2">Endpoint</th>}
-              {isAdmin && <th className="p-2">Key ID</th>}
+              <th className="p-2">API Key</th>
               <th className="p-2">Task ID</th>
               <th className="p-2">Tokens</th>
               <th className="p-2">输入类型</th>
@@ -153,8 +152,7 @@ export default function UsagePanel({ role, users }: Props) {
                 <tr className={`border-b cursor-pointer hover:bg-gray-50 ${expandedUsageId === u.id ? 'bg-blue-50' : ''}`} onClick={() => fetchUsageResult(u.id)}>
                   <td className="p-2 text-gray-400">{expandedUsageId === u.id ? '▼' : '▶'}</td>
                   {isAdmin && <td className="p-2">{u.username}</td>}
-                  {!isAdmin && <td className="p-2">{u.endpoint}</td>}
-                  {isAdmin && <td className="p-2">{u.keyId}</td>}
+                  <td className="p-2">{u.keyName || '-'}</td>
                   <td className="p-2 font-mono text-xs">{u.taskId}</td>
                   <td className="p-2">{u.completionTokens}</td>
                   <td className="p-2">
@@ -197,7 +195,7 @@ export default function UsagePanel({ role, users }: Props) {
           <div key={u.id} className="border border-gray-100 rounded-lg bg-gray-50 shadow-sm flex flex-col overflow-hidden">
             <div className={`p-4 flex flex-col gap-2 cursor-pointer ${expandedUsageId === u.id ? 'bg-blue-50' : ''}`} onClick={() => fetchUsageResult(u.id)}>
               <div className="flex justify-between items-center">
-                <span className="font-semibold text-gray-800">{isAdmin ? u.username : u.endpoint}</span>
+                <span className="font-semibold text-gray-800">{isAdmin ? u.username : (u.keyName || '-')}</span>
                 <span className={`text-xs font-semibold px-2 py-1 rounded ${u.status === 'succeeded' ? 'bg-green-100 text-green-700' : u.status === 'failed' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-700'}`}>{u.status}</span>
               </div>
               <div className="text-sm text-gray-600 break-all">Task ID: <span className="font-mono text-xs">{u.taskId}</span></div>

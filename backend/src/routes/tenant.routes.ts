@@ -133,11 +133,26 @@ tenantRoutes.get('/usage', async (c) => {
       totalCost: sql<string>`coalesce(sum(${schema.usageLogs.costYuan}::numeric), 0)`,
     }).from(schema.usageLogs).where(where);
 
-    const logs = await db.select().from(schema.usageLogs)
+    const logsRaw = await db.select({
+      id: schema.usageLogs.id,
+      userId: schema.usageLogs.userId,
+      keyId: schema.usageLogs.keyId,
+      endpoint: schema.usageLogs.endpoint,
+      taskId: schema.usageLogs.taskId,
+      status: schema.usageLogs.status,
+      completionTokens: schema.usageLogs.completionTokens,
+      hasVideoInput: schema.usageLogs.hasVideoInput,
+      costYuan: schema.usageLogs.costYuan,
+      createdAt: schema.usageLogs.createdAt,
+      keyName: schema.keys.name,
+    })
+      .from(schema.usageLogs)
+      .leftJoin(schema.keys, eq(schema.usageLogs.keyId, schema.keys.id))
       .where(where)
       .orderBy(desc(schema.usageLogs.createdAt))
       .limit(pageSize)
       .offset(offset);
+    const logs = logsRaw.map(l => ({ ...l, keyName: l.keyName || `Key#${l.keyId}` }));
 
     const keySummary = await db.select({
       keyId: schema.usageLogs.keyId,

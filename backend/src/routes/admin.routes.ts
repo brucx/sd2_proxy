@@ -231,6 +231,7 @@ adminRoutes.get('/usage', async (c) => {
         userId: schema.usageLogs.userId,
         username: schema.users.username,
         keyId: schema.usageLogs.keyId,
+        keyName: schema.keys.name,
         endpoint: schema.usageLogs.endpoint,
         taskId: schema.usageLogs.taskId,
         completionTokens: schema.usageLogs.completionTokens,
@@ -241,11 +242,13 @@ adminRoutes.get('/usage', async (c) => {
       })
       .from(schema.usageLogs)
       .innerJoin(schema.users, eq(schema.usageLogs.userId, schema.users.id))
+      .leftJoin(schema.keys, eq(schema.usageLogs.keyId, schema.keys.id))
       .orderBy(desc(schema.usageLogs.createdAt))
       .limit(pageSize)
       .offset(offset);
 
-    const logs = where ? await (query as any).where(where) : await query;
+    const logsRaw = where ? await (query as any).where(where) : await query;
+    const logs = logsRaw.map((l: any) => ({ ...l, keyName: l.keyName || `Key#${l.keyId}` }));
 
     return c.json({
       logs, total, page, pageSize,
