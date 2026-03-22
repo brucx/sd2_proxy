@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { eq, sql, lt } from 'drizzle-orm';
+import { eq, and, sql, lt } from 'drizzle-orm';
 import { config } from '../config.js';
 import { calculateCost } from '../utils/cost.util.js';
 import { concurrencyCache } from './concurrency.service.js';
@@ -30,9 +30,10 @@ const processPendingTask = async (log: any) => {
         const completionTokens = data.usage?.completion_tokens || 0;
         const cost = data.status === 'succeeded' ? calculateCost(completionTokens, log.hasVideoInput) : '0';
         
-        // P0 Optimization: DB Transaction
+        // Optimistic lock: only update if status is still 'pending' to prevent double deduction
+        let statusUpdated = false;
         await db.transaction(async (tx) => {
-          await tx.update(schema.usageLogs)
+          const updateResult = await tx.update(schema.usageLogs)
             .set({
               status: data.status,
               completionTokens: completionTokens,
@@ -40,21 +41,29 @@ const processPendingTask = async (log: any) => {
               resultData: JSON.stringify(data),
               updatedAt: new Date()
             })
-            .where(eq(schema.usageLogs.id, log.id));
+            .where(and(
+              eq(schema.usageLogs.id, log.id),
+              eq(schema.usageLogs.status, 'pending')
+            ))
+            .returning({ id: schema.usageLogs.id });
 
-          // Atomic balance deduction on success
-          if (data.status === 'succeeded' && parseFloat(cost) > 0) {
+          statusUpdated = updateResult.length > 0;
+
+          // Only deduct balance if we actually transitioned from pending
+          if (statusUpdated && data.status === 'succeeded' && parseFloat(cost) > 0) {
             await tx.update(schema.users)
               .set({ balance: sql`${schema.users.balance} - ${cost}` })
               .where(eq(schema.users.id, log.userId));
           }
         });
 
-        // Decrement concurrency counter
-        const ucc = concurrencyCache.get(log.userId);
-        if (ucc && ucc.active > 0) ucc.active--;
+        // Only decrement concurrency if we were the one to transition status
+        if (statusUpdated) {
+          const ucc = concurrencyCache.get(log.userId);
+          if (ucc && ucc.active > 0) ucc.active--;
+        }
         
-        logger.info(`Updated task ${log.taskId} status to ${data.status}, cost: ¥${cost}`);
+        logger.info(`Updated task ${log.taskId} status to ${data.status}, cost: ¥${cost}, applied: ${statusUpdated}`);
       }
     }
   } catch (err) {

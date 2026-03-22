@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { eq, sql } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { config } from '../config.js';
 import { calculateCost, detectVideoInput } from '../utils/cost.util.js';
 import { proxyAuthMiddleware } from '../middlewares/proxy.middleware.js';
@@ -133,9 +133,10 @@ proxyRoutes.post('/get_result', proxyAuthMiddleware, async (c) => {
             const hasVideo = existingLog[0]?.hasVideoInput ?? false;
             const cost = data.status === 'succeeded' ? calculateCost(completionTokens, hasVideo) : '0';
 
-            // P0 Optimization: DB Transaction
+            // Optimistic lock: only update if status is still 'pending' to prevent double deduction
+            let statusUpdated = false;
             await db.transaction(async (tx) => {
-              await tx.update(schema.usageLogs)
+              const updateResult = await tx.update(schema.usageLogs)
                 .set({
                   status: data.status,
                   completionTokens: completionTokens,
@@ -143,19 +144,27 @@ proxyRoutes.post('/get_result', proxyAuthMiddleware, async (c) => {
                   resultData: JSON.stringify(data),
                   updatedAt: new Date()
                 })
-                .where(eq(schema.usageLogs.taskId, data.id));
+                .where(and(
+                  eq(schema.usageLogs.taskId, data.id),
+                  eq(schema.usageLogs.status, 'pending')
+                ))
+                .returning({ id: schema.usageLogs.id });
 
-              // Atomic balance deduction on success
-              if (data.status === 'succeeded' && parseFloat(cost) > 0) {
+              statusUpdated = updateResult.length > 0;
+
+              // Only deduct balance if we actually transitioned from pending
+              if (statusUpdated && data.status === 'succeeded' && parseFloat(cost) > 0) {
                 await tx.update(schema.users)
                   .set({ balance: sql`${schema.users.balance} - ${cost}` })
                   .where(eq(schema.users.id, existingLog[0]!.userId));
               }
             });
 
-            // Decrement concurrency
-            const ucc = concurrencyCache.get(existingLog[0]!.userId);
-            if (ucc && ucc.active > 0) ucc.active--;
+            // Only decrement concurrency if we were the one to transition status
+            if (statusUpdated) {
+              const ucc = concurrencyCache.get(existingLog[0]!.userId);
+              if (ucc && ucc.active > 0) ucc.active--;
+            }
         }
       }
     }
