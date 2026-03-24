@@ -11,12 +11,14 @@ export default function RequestLogsPanel({ users }: Props) {
   const [requestLogsPage, setRequestLogsPage] = useState(1);
   const [requestLogsPageSize] = useState(20);
   const [requestLogsUserFilter, setRequestLogsUserFilter] = useState('');
+  const [requestLogsEndpointFilter, setRequestLogsEndpointFilter] = useState('');
   const [expandedLogId, setExpandedLogId] = useState<number | null>(null);
 
-  const fetchRequestLogs = async (page = requestLogsPage, userId = requestLogsUserFilter) => {
+  const fetchRequestLogs = async (page = requestLogsPage, userId = requestLogsUserFilter, endpoint = requestLogsEndpointFilter) => {
     try {
       const params: any = { page, pageSize: requestLogsPageSize };
       if (userId) params.userId = userId;
+      if (endpoint) params.endpoint = endpoint;
       const res = await api.get('/admin/request-logs', { params });
       setRequestLogs(res.data.logs);
       setRequestLogsTotal(res.data.total);
@@ -35,12 +37,23 @@ export default function RequestLogsPanel({ users }: Props) {
       <div className="flex flex-col sm:flex-row gap-4 mb-4 sm:items-end">
         <div className="w-full sm:w-auto">
           <label className="block text-sm text-gray-600 mb-1">按用户筛选</label>
-          <select value={requestLogsUserFilter} onChange={e => { setRequestLogsUserFilter(e.target.value); fetchRequestLogs(1, e.target.value); }} className="border px-3 py-2 rounded-md w-full sm:w-auto">
+          <select value={requestLogsUserFilter} onChange={e => { setRequestLogsUserFilter(e.target.value); fetchRequestLogs(1, e.target.value, requestLogsEndpointFilter); }} className="border px-3 py-2 rounded-md w-full sm:w-auto">
             <option value="">全部用户</option>
             {users.map(u => (<option key={u.id} value={u.id}>{u.username}</option>))}
           </select>
         </div>
-        <button onClick={() => fetchRequestLogs(requestLogsPage, requestLogsUserFilter)} className="bg-gray-600 text-white px-4 py-2 rounded-md h-fit text-sm w-full sm:w-auto">刷新</button>
+        <div className="w-full sm:w-auto">
+          <label className="block text-sm text-gray-600 mb-1">按端点筛选</label>
+          <input
+            type="text"
+            value={requestLogsEndpointFilter}
+            onChange={e => setRequestLogsEndpointFilter(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') fetchRequestLogs(1, requestLogsUserFilter, requestLogsEndpointFilter); }}
+            placeholder="输入端点关键词"
+            className="border px-3 py-2 rounded-md w-full sm:w-48"
+          />
+        </div>
+        <button onClick={() => fetchRequestLogs(1, requestLogsUserFilter, requestLogsEndpointFilter)} className="bg-gray-600 text-white px-4 py-2 rounded-md h-fit text-sm w-full sm:w-auto">刷新</button>
       </div>
       <div className="text-sm text-gray-500 mb-2">共 {requestLogsTotal} 条记录</div>
       <div className="overflow-x-auto">
@@ -141,8 +154,8 @@ export default function RequestLogsPanel({ users }: Props) {
           第 {requestLogsPage} 页 / 共 {Math.ceil(requestLogsTotal / requestLogsPageSize)} 页
         </div>
         <div className="space-x-2">
-          <button disabled={requestLogsPage <= 1} onClick={() => fetchRequestLogs(requestLogsPage - 1, requestLogsUserFilter)} className="px-3 py-1 border rounded-md text-sm disabled:opacity-40">上一页</button>
-          <button disabled={requestLogsPage >= Math.ceil(requestLogsTotal / requestLogsPageSize)} onClick={() => fetchRequestLogs(requestLogsPage + 1, requestLogsUserFilter)} className="px-3 py-1 border rounded-md text-sm disabled:opacity-40">下一页</button>
+          <button disabled={requestLogsPage <= 1} onClick={() => fetchRequestLogs(requestLogsPage - 1, requestLogsUserFilter, requestLogsEndpointFilter)} className="px-3 py-1 border rounded-md text-sm disabled:opacity-40">上一页</button>
+          <button disabled={requestLogsPage >= Math.ceil(requestLogsTotal / requestLogsPageSize)} onClick={() => fetchRequestLogs(requestLogsPage + 1, requestLogsUserFilter, requestLogsEndpointFilter)} className="px-3 py-1 border rounded-md text-sm disabled:opacity-40">下一页</button>
         </div>
       </div>
     </div>

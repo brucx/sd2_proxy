@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import bcrypt from 'bcrypt';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { eq, desc, and, gte, lte, sql } from 'drizzle-orm';
+import { eq, desc, and, gte, lte, sql, like } from 'drizzle-orm';
 import { authMiddleware, adminMiddleware } from '../middlewares/auth.middleware.js';
 import { clearKeyCache } from '../middlewares/proxy.middleware.js';
 import { concurrencyCache } from '../services/concurrency.service.js';
@@ -320,10 +320,14 @@ adminRoutes.get('/request-logs', async (c) => {
   const page = parseInt(c.req.query('page') || '1');
   const pageSize = parseInt(c.req.query('pageSize') || '50');
   const userIdFilter = c.req.query('userId');
+  const endpointFilter = c.req.query('endpoint');
   const offset = (page - 1) * pageSize;
 
   try {
-    const conditions = userIdFilter ? eq(schema.requestLogs.userId, parseInt(userIdFilter)) : undefined;
+    const conditionList: any[] = [];
+    if (userIdFilter) conditionList.push(eq(schema.requestLogs.userId, parseInt(userIdFilter)));
+    if (endpointFilter) conditionList.push(like(schema.requestLogs.endpoint, `%${endpointFilter}%`));
+    const conditions = conditionList.length > 0 ? and(...conditionList) : undefined;
 
     const countResult = conditions
       ? await db.select({ count: sql<number>`count(*)` }).from(schema.requestLogs).where(conditions)
