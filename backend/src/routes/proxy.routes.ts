@@ -65,7 +65,8 @@ proxyRoutes.post('/create', proxyAuthMiddleware, async (c) => {
         endpoint: '/create',
         taskId: data.id,
         hasVideoInput: isVideoInput,
-        status: 'pending'
+        status: 'pending',
+        requestBody: originalBody.substring(0, 8192),
       });
     } else {
        cc.active--; // Upstream error, release concurrency immediately

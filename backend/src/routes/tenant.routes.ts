@@ -194,6 +194,7 @@ tenantRoutes.get('/usage/:id/result', async (c) => {
       id: schema.usageLogs.id,
       userId: schema.usageLogs.userId,
       resultData: schema.usageLogs.resultData,
+      requestBody: schema.usageLogs.requestBody,
     }).from(schema.usageLogs).where(eq(schema.usageLogs.id, logId)).limit(1);
 
     if (log.length === 0) return c.json({ error: 'Not found' }, 404);
@@ -201,7 +202,7 @@ tenantRoutes.get('/usage/:id/result', async (c) => {
       return c.json({ error: 'Forbidden' }, 403);
     }
 
-    return c.json({ resultData: log[0]!.resultData });
+    return c.json({ resultData: log[0]!.resultData, requestBody: log[0]!.requestBody });
   } catch (error) {
     console.error('Usage result query error:', error);
     return c.json({ error: 'Internal Server Error' }, 500);

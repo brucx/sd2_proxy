@@ -18,7 +18,7 @@ export default function UsagePanel({ role, users }: Props) {
   const [usageTotalCost, setUsageTotalCost] = useState('0');
   const [usageKeySummary, setUsageKeySummary] = useState<any[]>([]);
   const [expandedUsageId, setExpandedUsageId] = useState<number | null>(null);
-  const [usageResultCache, setUsageResultCache] = useState<Record<number, string | null>>({});
+  const [usageResultCache, setUsageResultCache] = useState<Record<number, { resultData: string | null; requestBody: string | null } | null>>({});
   const [usageResultLoading, setUsageResultLoading] = useState<number | null>(null);
 
   const fetchUsage = async (page = usagePage, userId = usageUserFilter, start = usageStartDate, end = usageEndDate) => {
@@ -67,7 +67,7 @@ export default function UsagePanel({ role, users }: Props) {
     setUsageResultLoading(logId);
     try {
       const res = await api.get(`/usage/${logId}/result`);
-      setUsageResultCache(prev => ({ ...prev, [logId]: res.data.resultData }));
+      setUsageResultCache(prev => ({ ...prev, [logId]: { resultData: res.data.resultData, requestBody: res.data.requestBody } }));
     } catch {
       setUsageResultCache(prev => ({ ...prev, [logId]: null }));
     } finally {
@@ -170,15 +170,25 @@ export default function UsagePanel({ role, users }: Props) {
                 {expandedUsageId === u.id && (
                   <tr key={`${u.id}-detail`} className="border-b bg-gray-50">
                     <td colSpan={isAdmin ? 10 : 9} className="p-4">
-                      <h4 className="font-semibold text-gray-700 mb-2">任务返回详情</h4>
                       {usageResultLoading === u.id ? (
                         <p className="text-sm text-gray-500">加载中...</p>
                       ) : usageResultCache[u.id] ? (
-                        <pre className="bg-gray-900 text-green-300 p-3 rounded-lg text-xs overflow-auto max-h-64 whitespace-pre-wrap">
-                          {JSON.stringify(JSON.parse(usageResultCache[u.id]!), null, 2)}
-                        </pre>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <h4 className="font-semibold text-gray-700 mb-2">请求内容 (Request Body)</h4>
+                            <pre className="bg-gray-900 text-green-300 p-3 rounded-lg text-xs overflow-auto max-h-64 whitespace-pre-wrap">
+                              {usageResultCache[u.id]!.requestBody ? JSON.stringify(JSON.parse(usageResultCache[u.id]!.requestBody!), null, 2) : '(empty)'}
+                            </pre>
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-gray-700 mb-2">任务返回详情 (Result)</h4>
+                            <pre className="bg-gray-900 text-blue-300 p-3 rounded-lg text-xs overflow-auto max-h-64 whitespace-pre-wrap">
+                              {usageResultCache[u.id]!.resultData ? JSON.stringify(JSON.parse(usageResultCache[u.id]!.resultData!), null, 2) : '(empty)'}
+                            </pre>
+                          </div>
+                        </div>
                       ) : (
-                        <p className="text-sm text-gray-400">暂无返回数据</p>
+                        <p className="text-sm text-gray-400">暂无数据</p>
                       )}
                     </td>
                   </tr>
@@ -215,15 +225,25 @@ export default function UsagePanel({ role, users }: Props) {
             </div>
             {expandedUsageId === u.id && (
               <div className="bg-white p-4 border-t border-gray-200">
-                <h4 className="font-semibold text-gray-700 mb-2 text-sm">任务返回详情</h4>
                 {usageResultLoading === u.id ? (
                   <p className="text-sm text-gray-500">加载中...</p>
                 ) : usageResultCache[u.id] ? (
-                  <pre className="bg-gray-900 text-green-300 p-3 rounded-lg text-xs overflow-auto max-h-48 whitespace-pre-wrap">
-                    {JSON.stringify(JSON.parse(usageResultCache[u.id]!), null, 2)}
-                  </pre>
+                  <div className="grid grid-cols-1 gap-4">
+                    <div>
+                      <h4 className="font-semibold text-gray-700 mb-2 text-sm">请求内容 (Request Body)</h4>
+                      <pre className="bg-gray-900 text-green-300 p-3 rounded-lg text-xs overflow-auto max-h-48 whitespace-pre-wrap">
+                        {usageResultCache[u.id]!.requestBody ? JSON.stringify(JSON.parse(usageResultCache[u.id]!.requestBody!), null, 2) : '(empty)'}
+                      </pre>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-700 mb-2 text-sm">任务返回详情 (Result)</h4>
+                      <pre className="bg-gray-900 text-blue-300 p-3 rounded-lg text-xs overflow-auto max-h-48 whitespace-pre-wrap">
+                        {usageResultCache[u.id]!.resultData ? JSON.stringify(JSON.parse(usageResultCache[u.id]!.resultData!), null, 2) : '(empty)'}
+                      </pre>
+                    </div>
+                  </div>
                 ) : (
-                  <p className="text-sm text-gray-400">暂无返回数据</p>
+                  <p className="text-sm text-gray-400">暂无数据</p>
                 )}
               </div>
             )}

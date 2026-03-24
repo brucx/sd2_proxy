@@ -35,6 +35,7 @@ export const usageLogs = pgTable('usage_logs', {
   costYuan: text('cost_yuan').notNull().default('0'),
   status: varchar('status', { length: 50 }).default('pending'), // 'pending', 'succeeded', 'failed'
   resultData: text('result_data'), // 任务完成时的上游完整响应 JSON
+  requestBody: text('request_body'), // 原始请求体（截断至 8K）
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => [
