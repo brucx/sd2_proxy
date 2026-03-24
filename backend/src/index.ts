@@ -74,6 +74,15 @@ startCleanupInterval();
 startCronJobs();
 setupInitialAdmin().then(() => loadConcurrencyCache());
 
+// Cache static files for 2 hours
+app.use('/*', async (c, next) => {
+  await next();
+  // Only set cache for non-API, successful responses with content
+  if (!c.req.path.startsWith('/api/')) {
+    c.header('Cache-Control', 'public, max-age=7200');
+  }
+});
+
 // Serve Frontend Static Files
 app.use('/*', serveStatic({ root: '../frontend/dist' }));
 
