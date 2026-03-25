@@ -4,9 +4,10 @@ import { api } from '../api';
 interface Props {
   role: string;
   users?: any[];
+  keys?: any[];
 }
 
-export default function UsagePanel({ role, users }: Props) {
+export default function UsagePanel({ role, users, keys }: Props) {
   const [usage, setUsage] = useState<any[]>([]);
   const [usageTotal, setUsageTotal] = useState(0);
   const [usagePage, setUsagePage] = useState(1);
@@ -14,6 +15,7 @@ export default function UsagePanel({ role, users }: Props) {
   const [usageUserFilter, setUsageUserFilter] = useState('');
   const [usageStartDate, setUsageStartDate] = useState('');
   const [usageEndDate, setUsageEndDate] = useState('');
+  const [usageKeyFilter, setUsageKeyFilter] = useState('');
   const [usageTotalTokens, setUsageTotalTokens] = useState(0);
   const [usageTotalCost, setUsageTotalCost] = useState('0');
   const [usageKeySummary, setUsageKeySummary] = useState<any[]>([]);
@@ -21,12 +23,13 @@ export default function UsagePanel({ role, users }: Props) {
   const [usageResultCache, setUsageResultCache] = useState<Record<number, { resultData: string | null; requestBody: string | null } | null>>({});
   const [usageResultLoading, setUsageResultLoading] = useState<number | null>(null);
 
-  const fetchUsage = async (page = usagePage, userId = usageUserFilter, start = usageStartDate, end = usageEndDate) => {
+  const fetchUsage = async (page = usagePage, userId = usageUserFilter, start = usageStartDate, end = usageEndDate, keyId = usageKeyFilter) => {
     try {
       const params: any = { page, pageSize: usagePageSize };
       if (userId) params.userId = userId;
       if (start) params.startDate = start;
       if (end) params.endDate = end;
+      if (keyId) params.keyId = keyId;
       const endpoint = role === 'admin' ? '/admin/usage' : '/usage';
       const res = await api.get(endpoint, { params });
       setUsage(res.data.logs);
@@ -46,6 +49,7 @@ export default function UsagePanel({ role, users }: Props) {
       if (usageUserFilter) params.userId = usageUserFilter;
       if (usageStartDate) params.startDate = usageStartDate;
       if (usageEndDate) params.endDate = usageEndDate;
+      if (usageKeyFilter) params.keyId = usageKeyFilter;
       const endpoint = role === 'admin' ? '/admin/usage/export' : '/usage/export';
       const res = await api.get(endpoint, { params, responseType: 'blob' });
       const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8;' });
@@ -93,6 +97,15 @@ export default function UsagePanel({ role, users }: Props) {
             </select>
           </div>
         )}
+        {!isAdmin && keys && keys.length > 0 && (
+          <div className="w-full sm:w-auto">
+            <label className="block text-sm text-gray-600 mb-1">按 API Key 筛选</label>
+            <select value={usageKeyFilter} onChange={e => { setUsageKeyFilter(e.target.value); fetchUsage(1, usageUserFilter, usageStartDate, usageEndDate, e.target.value); }} className="border px-3 py-2 rounded-md w-full sm:w-auto">
+              <option value="">全部 Key</option>
+              {keys.map(k => (<option key={k.id} value={k.id}>{k.name}</option>))}
+            </select>
+          </div>
+        )}
         <div className="w-full sm:w-auto">
           <label className="block text-sm text-gray-600 mb-1">开始日期</label>
           <input type="date" value={usageStartDate} onChange={e => { setUsageStartDate(e.target.value); fetchUsage(1, usageUserFilter, e.target.value, usageEndDate); }} className="border px-3 py-2 rounded-md w-full sm:w-auto" />
@@ -101,7 +114,7 @@ export default function UsagePanel({ role, users }: Props) {
           <label className="block text-sm text-gray-600 mb-1">结束日期</label>
           <input type="date" value={usageEndDate} onChange={e => { setUsageEndDate(e.target.value); fetchUsage(1, usageUserFilter, usageStartDate, e.target.value); }} className="border px-3 py-2 rounded-md w-full sm:w-auto" />
         </div>
-        <button onClick={() => fetchUsage(usagePage, usageUserFilter, usageStartDate, usageEndDate)} className="bg-gray-600 text-white px-4 py-2 rounded-md h-fit text-sm w-full sm:w-auto">刷新</button>
+        <button onClick={() => fetchUsage(usagePage, usageUserFilter, usageStartDate, usageEndDate, usageKeyFilter)} className="bg-gray-600 text-white px-4 py-2 rounded-md h-fit text-sm w-full sm:w-auto">刷新</button>
         <button onClick={exportUsageCsv} className="bg-green-600 text-white px-4 py-2 rounded-md h-fit text-sm w-full sm:w-auto">导出 CSV</button>
       </div>
       <div className="flex flex-wrap gap-4 mb-4">
@@ -257,8 +270,8 @@ export default function UsagePanel({ role, users }: Props) {
           第 {usagePage} 页 / 共 {Math.ceil(usageTotal / usagePageSize)} 页
         </div>
         <div className="space-x-2">
-          <button disabled={usagePage <= 1} onClick={() => fetchUsage(usagePage - 1, usageUserFilter, usageStartDate, usageEndDate)} className="px-3 py-1 border rounded-md text-sm disabled:opacity-40">上一页</button>
-          <button disabled={usagePage >= Math.ceil(usageTotal / usagePageSize)} onClick={() => fetchUsage(usagePage + 1, usageUserFilter, usageStartDate, usageEndDate)} className="px-3 py-1 border rounded-md text-sm disabled:opacity-40">下一页</button>
+          <button disabled={usagePage <= 1} onClick={() => fetchUsage(usagePage - 1, usageUserFilter, usageStartDate, usageEndDate, usageKeyFilter)} className="px-3 py-1 border rounded-md text-sm disabled:opacity-40">上一页</button>
+          <button disabled={usagePage >= Math.ceil(usageTotal / usagePageSize)} onClick={() => fetchUsage(usagePage + 1, usageUserFilter, usageStartDate, usageEndDate, usageKeyFilter)} className="px-3 py-1 border rounded-md text-sm disabled:opacity-40">下一页</button>
         </div>
       </div>
     </div>

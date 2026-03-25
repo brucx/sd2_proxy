@@ -119,7 +119,7 @@ function Dashboard() {
             onRefresh={fetchData}
             onFetchRechargeRecords={fetchRechargeRecords}
           />
-          <UsagePanel role="tenant" />
+          <UsagePanel role="tenant" keys={keys} />
         </div>
       )}
     </div>

@@ -113,6 +113,7 @@ tenantRoutes.get('/usage', async (c) => {
   const pageSize = parseInt(c.req.query('pageSize') || '20');
   const startDate = c.req.query('startDate');
   const endDate = c.req.query('endDate');
+  const keyId = c.req.query('keyId');
   const offset = (page - 1) * pageSize;
 
   try {
@@ -123,6 +124,7 @@ tenantRoutes.get('/usage', async (c) => {
       end.setHours(23, 59, 59, 999);
       conditions.push(lte(schema.usageLogs.createdAt, end));
     }
+    if (keyId) conditions.push(eq(schema.usageLogs.keyId, parseInt(keyId)));
     const where = and(...conditions);
 
     const countResult = await db.select({ count: sql<number>`count(*)` }).from(schema.usageLogs).where(where);
@@ -214,6 +216,7 @@ tenantRoutes.get('/usage/export', async (c) => {
   const user = c.get('user');
   const startDate = c.req.query('startDate');
   const endDate = c.req.query('endDate');
+  const keyId = c.req.query('keyId');
 
   try {
     const conditions: any[] = [eq(schema.usageLogs.userId, user.id)];
@@ -223,6 +226,7 @@ tenantRoutes.get('/usage/export', async (c) => {
       end.setHours(23, 59, 59, 999);
       conditions.push(lte(schema.usageLogs.createdAt, end));
     }
+    if (keyId) conditions.push(eq(schema.usageLogs.keyId, parseInt(keyId)));
 
     const logs = await db.select().from(schema.usageLogs)
       .where(and(...conditions))
