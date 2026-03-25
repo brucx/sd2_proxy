@@ -3,8 +3,9 @@ import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import { eq, desc, and, gte, lte, isNull, sql } from 'drizzle-orm';
 import { authMiddleware } from '../middlewares/auth.middleware.js';
-import { concurrencyCache } from '../services/concurrency.service.js';
+import { concurrencyCache, keyConcurrencyCache } from '../services/concurrency.service.js';
 import type { AppVariables } from '../types.js';
+import { clearKeyCache } from '../middlewares/proxy.middleware.js';
 
 export const tenantRoutes = new Hono<{ Variables: AppVariables }>();
 
@@ -106,6 +107,56 @@ tenantRoutes.delete('/keys/:id', async (c) => {
   return c.json({ success: true });
 });
 
+// Tenant: Set key quota limit
+tenantRoutes.put('/keys/:id/quota', async (c) => {
+  const user = c.get('user');
+  const keyId = parseInt(c.req.param('id'));
+  const { quotaLimit } = await c.req.json();
+
+  const keyRecord = await db.select().from(schema.keys).where(and(eq(schema.keys.id, keyId), eq(schema.keys.userId, user.id), isNull(schema.keys.deletedAt))).limit(1);
+  if (keyRecord.length === 0) return c.json({ error: 'Key not found' }, 404);
+
+  const newLimit = quotaLimit === null || quotaLimit === '' ? null : parseFloat(quotaLimit);
+  if (newLimit !== null && (isNaN(newLimit) || newLimit < 0)) {
+    return c.json({ error: '配额必须为正数或不限制' }, 400);
+  }
+
+  await db.update(schema.keys).set({ quotaLimit: newLimit === null ? null : newLimit.toFixed(4) }).where(eq(schema.keys.id, keyId));
+  clearKeyCache();
+  return c.json({ success: true });
+});
+
+// Tenant: Set key concurrency limit
+tenantRoutes.put('/keys/:id/concurrency', async (c) => {
+  const user = c.get('user');
+  const keyId = parseInt(c.req.param('id'));
+  const { concurrencyLimit } = await c.req.json();
+
+  const keyRecord = await db.select().from(schema.keys).where(and(eq(schema.keys.id, keyId), eq(schema.keys.userId, user.id), isNull(schema.keys.deletedAt))).limit(1);
+  if (keyRecord.length === 0) return c.json({ error: 'Key not found' }, 404);
+
+  const newLimit = concurrencyLimit === null || concurrencyLimit === '' ? null : parseInt(concurrencyLimit);
+  if (newLimit !== null && (isNaN(newLimit) || newLimit < 1 || newLimit > 100)) {
+    return c.json({ error: '并发数必须在 1-100 之间' }, 400);
+  }
+
+  await db.update(schema.keys).set({ concurrencyLimit: newLimit }).where(eq(schema.keys.id, keyId));
+  clearKeyCache();
+  return c.json({ success: true });
+});
+
+// Tenant: Reset key quota used
+tenantRoutes.post('/keys/:id/reset-quota', async (c) => {
+  const user = c.get('user');
+  const keyId = parseInt(c.req.param('id'));
+
+  const keyRecord = await db.select().from(schema.keys).where(and(eq(schema.keys.id, keyId), eq(schema.keys.userId, user.id), isNull(schema.keys.deletedAt))).limit(1);
+  if (keyRecord.length === 0) return c.json({ error: 'Key not found' }, 404);
+
+  await db.update(schema.keys).set({ quotaUsed: '0' }).where(eq(schema.keys.id, keyId));
+  clearKeyCache();
+  return c.json({ success: true });
+});
 // Tenant: Get Usage
 tenantRoutes.get('/usage', async (c) => {
   const user = c.get('user');

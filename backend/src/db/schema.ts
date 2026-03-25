@@ -19,6 +19,9 @@ export const keys = pgTable('keys', {
   enabled: boolean('enabled').notNull().default(true),
   deletedAt: timestamp('deleted_at'),
   expiresAt: timestamp('expires_at'),
+  quotaLimit: numeric('quota_limit', { precision: 20, scale: 4 }),  // null = 不限制
+  quotaUsed: numeric('quota_used', { precision: 20, scale: 4 }).notNull().default('0'),
+  concurrencyLimit: integer('concurrency_limit'),  // null = 不限制（跟随用户级）
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => [
   index('keys_user_id_idx').on(table.userId),

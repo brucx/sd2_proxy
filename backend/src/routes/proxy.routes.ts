@@ -5,7 +5,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import { config } from '../config.js';
 import { calculateCost, detectVideoInput } from '../utils/cost.util.js';
 import { proxyAuthMiddleware } from '../middlewares/proxy.middleware.js';
-import { concurrencyCache } from '../services/concurrency.service.js';
+import { concurrencyCache, keyConcurrencyCache } from '../services/concurrency.service.js';
 import type { AppVariables } from '../types.js';
 
 export const proxyRoutes = new Hono<{ Variables: AppVariables }>();
@@ -23,13 +23,31 @@ proxyRoutes.post('/create', proxyAuthMiddleware, async (c) => {
     return c.json({ error: '余额不足，请联系管理员充值' }, 403);
   }
 
-  // Concurrency check
+  // Key quota check
+  if (keyRecord.quotaLimit !== null && keyRecord.quotaLimit !== undefined) {
+    const used = parseFloat(keyRecord.quotaUsed || '0');
+    const limit = parseFloat(keyRecord.quotaLimit);
+    if (used >= limit) {
+      return c.json({ error: '该 Key 配额已用尽，请调整配额或重置已用量' }, 403);
+    }
+  }
+
+  // User-level concurrency check
   let cc = concurrencyCache.get(userId);
   if (!cc) { cc = { limit: 3, active: 0 }; concurrencyCache.set(userId, cc); }
   if (cc.active >= cc.limit) {
     return c.json({ error: `并发数已达上限 (${cc.limit})，请稍后重试` }, 429);
   }
+
+  // Key-level concurrency check
+  if (keyRecord.concurrencyLimit !== null && keyRecord.concurrencyLimit !== undefined) {
+    const keyActive = keyConcurrencyCache.get(keyRecord.id) || 0;
+    if (keyActive >= keyRecord.concurrencyLimit) {
+      return c.json({ error: `该 Key 并发数已达上限 (${keyRecord.concurrencyLimit})，请稍后重试` }, 429);
+    }
+  }
   cc.active++;
+  keyConcurrencyCache.set(keyRecord.id, (keyConcurrencyCache.get(keyRecord.id) || 0) + 1);
 
   const originalBody = JSON.stringify(body);
 
@@ -70,6 +88,8 @@ proxyRoutes.post('/create', proxyAuthMiddleware, async (c) => {
       });
     } else {
        cc.active--; // Upstream error, release concurrency immediately
+       const ka = keyConcurrencyCache.get(keyRecord.id) || 0;
+       if (ka > 0) keyConcurrencyCache.set(keyRecord.id, ka - 1);
     }
 
     db.insert(schema.requestLogs).values({
@@ -88,7 +108,9 @@ proxyRoutes.post('/create', proxyAuthMiddleware, async (c) => {
     return c.json(data);
   } catch (error) {
     console.error('Proxy Create Error:', error);
-    cc.active--; 
+    cc.active--;
+    const ka2 = keyConcurrencyCache.get(keyRecord.id) || 0;
+    if (ka2 > 0) keyConcurrencyCache.set(keyRecord.id, ka2 - 1);
     db.insert(schema.requestLogs).values({
       userId: keyRecord.userId,
       keyId: keyRecord.id,
@@ -158,6 +180,10 @@ proxyRoutes.post('/get_result', proxyAuthMiddleware, async (c) => {
                 await tx.update(schema.users)
                   .set({ balance: sql`${schema.users.balance} - ${cost}` })
                   .where(eq(schema.users.id, existingLog[0]!.userId));
+                // Accumulate key quota used
+                await tx.update(schema.keys)
+                  .set({ quotaUsed: sql`${schema.keys.quotaUsed}::numeric + ${cost}::numeric` })
+                  .where(eq(schema.keys.id, existingLog[0]!.keyId));
               }
             });
 
@@ -165,6 +191,9 @@ proxyRoutes.post('/get_result', proxyAuthMiddleware, async (c) => {
             if (statusUpdated) {
               const ucc = concurrencyCache.get(existingLog[0]!.userId);
               if (ucc && ucc.active > 0) ucc.active--;
+              // Release key-level concurrency
+              const kcc = keyConcurrencyCache.get(existingLog[0]!.keyId) || 0;
+              if (kcc > 0) keyConcurrencyCache.set(existingLog[0]!.keyId, kcc - 1);
             }
         }
       }

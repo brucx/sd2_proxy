@@ -52,6 +52,38 @@ export default function TenantDashboard({
     onRefresh();
   };
 
+  const setQuota = async (keyId: number, currentLimit: string | null) => {
+    const input = window.prompt('设置配额上限（元），留空表示不限制：', currentLimit || '');
+    if (input === null) return; // cancelled
+    try {
+      await api.put(`/keys/${keyId}/quota`, { quotaLimit: input === '' ? null : input });
+      onRefresh();
+    } catch (err: any) {
+      alert(err.response?.data?.error || '设置失败');
+    }
+  };
+
+  const setConcurrency = async (keyId: number, currentLimit: number | null) => {
+    const input = window.prompt('设置并发上限（1-100），留空表示不限制：', currentLimit !== null ? String(currentLimit) : '');
+    if (input === null) return;
+    try {
+      await api.put(`/keys/${keyId}/concurrency`, { concurrencyLimit: input === '' ? null : input });
+      onRefresh();
+    } catch (err: any) {
+      alert(err.response?.data?.error || '设置失败');
+    }
+  };
+
+  const resetQuota = async (keyId: number) => {
+    if (!window.confirm('确定要重置该 Key 的已用配额吗？')) return;
+    try {
+      await api.post(`/keys/${keyId}/reset-quota`);
+      onRefresh();
+    } catch (err: any) {
+      alert(err.response?.data?.error || '重置失败');
+    }
+  };
+
   const addWhitelistIp = async () => {
     setWhitelistMsg('');
     if (!newWhitelistIp.trim()) { setWhitelistMsg('请输入 IP 地址'); return; }
@@ -168,7 +200,7 @@ export default function TenantDashboard({
         </div>
         <table className="w-full text-left border-collapse hidden md:table">
           <thead>
-            <tr className="border-b bg-gray-50"><th className="p-2">Name</th><th className="p-2">API Key</th><th className="p-2">Created</th><th className="p-2">操作</th></tr>
+            <tr className="border-b bg-gray-50"><th className="p-2">Name</th><th className="p-2">API Key</th><th className="p-2">配额</th><th className="p-2">并发</th><th className="p-2">Created</th><th className="p-2">操作</th></tr>
           </thead>
           <tbody>
             {keys.map(k => (
@@ -182,9 +214,26 @@ export default function TenantDashboard({
                     </button>
                   </span>
                 </td>
+                <td className="p-2 text-sm">
+                  {k.quotaLimit !== null && k.quotaLimit !== undefined
+                    ? <span className={parseFloat(k.quotaUsed || '0') >= parseFloat(k.quotaLimit) ? 'text-red-600 font-semibold' : ''}>¥{parseFloat(k.quotaUsed || '0').toFixed(2)} / ¥{parseFloat(k.quotaLimit).toFixed(2)}</span>
+                    : <span className="text-gray-400">不限</span>}
+                </td>
+                <td className="p-2 text-sm">
+                  {k.concurrencyLimit !== null && k.concurrencyLimit !== undefined
+                    ? <span>{k.concurrencyLimit}</span>
+                    : <span className="text-gray-400">不限</span>}
+                </td>
                 <td className="p-2 text-sm">{new Date(k.createdAt).toLocaleDateString()}</td>
                 <td className="p-2">
-                  <button onClick={() => deleteKey(k.id)} className="text-red-500 hover:underline text-sm">删除</button>
+                  <div className="flex flex-wrap gap-1">
+                    <button onClick={() => setQuota(k.id, k.quotaLimit)} className="text-blue-500 hover:underline text-xs">配额</button>
+                    {k.quotaLimit !== null && k.quotaLimit !== undefined && (
+                      <button onClick={() => resetQuota(k.id)} className="text-orange-500 hover:underline text-xs">重置</button>
+                    )}
+                    <button onClick={() => setConcurrency(k.id, k.concurrencyLimit)} className="text-indigo-500 hover:underline text-xs">并发</button>
+                    <button onClick={() => deleteKey(k.id)} className="text-red-500 hover:underline text-xs">删除</button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -203,8 +252,22 @@ export default function TenantDashboard({
                   {copiedKeyId === k.id ? '✅ Copied' : '📋 Copy'}
                 </button>
               </div>
+              <div className="flex gap-4 text-xs text-gray-600 mt-1">
+                <span>配额: {k.quotaLimit !== null && k.quotaLimit !== undefined
+                  ? <span className={parseFloat(k.quotaUsed || '0') >= parseFloat(k.quotaLimit) ? 'text-red-600 font-semibold' : ''}>¥{parseFloat(k.quotaUsed || '0').toFixed(2)}/{parseFloat(k.quotaLimit).toFixed(2)}</span>
+                  : <span className="text-gray-400">不限</span>}</span>
+                <span>并发: {k.concurrencyLimit !== null && k.concurrencyLimit !== undefined
+                  ? k.concurrencyLimit
+                  : <span className="text-gray-400">不限</span>}</span>
+              </div>
               <div className="flex justify-between items-center pt-2 border-t border-gray-200 mt-1">
-                <span className="text-xs text-gray-500">{new Date(k.createdAt).toLocaleDateString()}</span>
+                <div className="flex gap-2">
+                  <button onClick={() => setQuota(k.id, k.quotaLimit)} className="text-blue-500 hover:underline text-xs">配额</button>
+                  {k.quotaLimit !== null && k.quotaLimit !== undefined && (
+                    <button onClick={() => resetQuota(k.id)} className="text-orange-500 hover:underline text-xs">重置</button>
+                  )}
+                  <button onClick={() => setConcurrency(k.id, k.concurrencyLimit)} className="text-indigo-500 hover:underline text-xs">并发</button>
+                </div>
                 <button onClick={() => deleteKey(k.id)} className="text-red-500 hover:underline text-sm">删除</button>
               </div>
             </div>
