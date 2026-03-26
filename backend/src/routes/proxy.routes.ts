@@ -156,7 +156,7 @@ proxyRoutes.post('/get_result', proxyAuthMiddleware, async (c) => {
             const hasVideo = existingLog[0]?.hasVideoInput ?? false;
             const cost = data.status === 'succeeded' ? calculateCost(completionTokens, hasVideo) : '0';
 
-            // Optimistic lock: only update if status is still 'pending' to prevent double deduction
+            // Optimistic lock: only update if status is 'pending' or 'expired' to allow recovery
             let statusUpdated = false;
             await db.transaction(async (tx) => {
               const updateResult = await tx.update(schema.usageLogs)
@@ -169,13 +169,13 @@ proxyRoutes.post('/get_result', proxyAuthMiddleware, async (c) => {
                 })
                 .where(and(
                   eq(schema.usageLogs.taskId, data.id),
-                  eq(schema.usageLogs.status, 'pending')
+                  sql`${schema.usageLogs.status} IN ('pending', 'expired')`
                 ))
                 .returning({ id: schema.usageLogs.id });
 
               statusUpdated = updateResult.length > 0;
 
-              // Only deduct balance if we actually transitioned from pending
+              // Only deduct balance if we actually transitioned from pending or recovered from expired
               if (statusUpdated && data.status === 'succeeded' && parseFloat(cost) > 0) {
                 await tx.update(schema.users)
                   .set({ balance: sql`${schema.users.balance} - ${cost}` })

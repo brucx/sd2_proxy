@@ -4,7 +4,7 @@ import * as schema from '../db/schema.js';
 import { eq, and, sql, lt } from 'drizzle-orm';
 import { config } from '../config.js';
 import { calculateCost } from '../utils/cost.util.js';
-import { concurrencyCache } from './concurrency.service.js';
+import { concurrencyCache, keyConcurrencyCache } from './concurrency.service.js';
 import { logger } from '../utils/logger.util.js';
 
 const CRON_BATCH_SIZE = 10;
@@ -54,6 +54,12 @@ const processPendingTask = async (log: any) => {
             await tx.update(schema.users)
               .set({ balance: sql`${schema.users.balance} - ${cost}` })
               .where(eq(schema.users.id, log.userId));
+              
+            if (log.keyId) {
+              await tx.update(schema.keys)
+                .set({ quotaUsed: sql`${schema.keys.quotaUsed}::numeric + ${cost}::numeric` })
+                .where(eq(schema.keys.id, log.keyId));
+            }
           }
         });
 
@@ -61,6 +67,11 @@ const processPendingTask = async (log: any) => {
         if (statusUpdated) {
           const ucc = concurrencyCache.get(log.userId);
           if (ucc && ucc.active > 0) ucc.active--;
+          
+          if (log.keyId) {
+            const kcc = keyConcurrencyCache.get(log.keyId) || 0;
+            if (kcc > 0) keyConcurrencyCache.set(log.keyId, kcc - 1);
+          }
         }
         
         logger.info(`Updated task ${log.taskId} status to ${data.status}, cost: ¥${cost}, applied: ${statusUpdated}`);
@@ -137,6 +148,11 @@ export function startCronJobs() {
 
             const ucc = concurrencyCache.get(log.userId);
             if (ucc && ucc.active > 0) ucc.active--;
+            
+            if (log.keyId) {
+              const kcc = keyConcurrencyCache.get(log.keyId) || 0;
+              if (kcc > 0) keyConcurrencyCache.set(log.keyId, kcc - 1);
+            }
             logger.info(`Auto-expired stuck task ${log.taskId}`);
           }
         }
