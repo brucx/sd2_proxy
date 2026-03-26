@@ -14,7 +14,7 @@ export const config = {
   JWT_SECRET: process.env.JWT_SECRET!,
   UPSTREAM_URL: process.env.UPSTREAM_URL || 'http://127.0.0.1',
   ARK_API_KEY: process.env.ARK_API_KEY || '',
-  PENDING_TIMEOUT_MS: (parseInt(process.env.PENDING_TIMEOUT_MINUTES || '20')) * 60 * 1000,
+  PENDING_TIMEOUT_MS: (parseInt(process.env.PENDING_TIMEOUT_MINUTES || '60')) * 60 * 1000,
   PRICE_WITH_VIDEO: parseFloat(process.env.PRICE_WITH_VIDEO || '28'),
   PRICE_WITHOUT_VIDEO: parseFloat(process.env.PRICE_WITHOUT_VIDEO || '46'),
   CORS_ORIGINS: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',').map(s => s.trim()) : '*',

@@ -30,7 +30,7 @@ const processPendingTask = async (log: any) => {
         const completionTokens = data.usage?.completion_tokens || 0;
         const cost = data.status === 'succeeded' ? calculateCost(completionTokens, log.hasVideoInput) : '0';
         
-        // Optimistic lock: only update if status is still 'pending' to prevent double deduction
+        // Optimistic lock: only update if status is 'pending' or 'expired' to allow recovery
         let statusUpdated = false;
         await db.transaction(async (tx) => {
           const updateResult = await tx.update(schema.usageLogs)
@@ -43,7 +43,7 @@ const processPendingTask = async (log: any) => {
             })
             .where(and(
               eq(schema.usageLogs.id, log.id),
-              eq(schema.usageLogs.status, 'pending')
+              sql`${schema.usageLogs.status} IN ('pending', 'expired')`
             ))
             .returning({ id: schema.usageLogs.id });
 
@@ -83,22 +83,62 @@ export function startCronJobs() {
         await Promise.allSettled(batch.map(log => processPendingTask(log)));
       }
 
-      // Auto-expire stuck tasks
+      // Recover expired tasks that may have completed upstream
+      const expiredLogs = await db.select().from(schema.usageLogs).where(eq(schema.usageLogs.status, 'expired'));
+      for (let i = 0; i < expiredLogs.length; i += CRON_BATCH_SIZE) {
+        const batch = expiredLogs.slice(i, i + CRON_BATCH_SIZE);
+        await Promise.allSettled(batch.map(log => processPendingTask(log)));
+      }
+      if (expiredLogs.length > 0) {
+        logger.info(`Attempted recovery of ${expiredLogs.length} expired tasks`);
+      }
+
+      // Auto-expire stuck tasks (with a final get_result check before expiring)
       const now = Date.now();
       const stillPending = await db.select().from(schema.usageLogs).where(eq(schema.usageLogs.status, 'pending'));
       for (const log of stillPending) {
         const age = now - new Date(log.createdAt).getTime();
         if (age > config.PENDING_TIMEOUT_MS) {
-          
-          await db.transaction(async (tx) => {
-             await tx.update(schema.usageLogs)
-              .set({ status: 'expired', updatedAt: new Date() })
-              .where(eq(schema.usageLogs.id, log.id));
-          });
+          // Final get_result check before expiring
+          let recovered = false;
+          try {
+            if (log.taskId) {
+              const finalCheck = await fetch(`${config.UPSTREAM_URL}/api/v1/doubao/get_result`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${config.ARK_API_KEY}`
+                },
+                body: JSON.stringify({ id: log.taskId })
+              });
+              if (finalCheck.ok) {
+                const finalData: any = await finalCheck.json();
+                if (['succeeded', 'failed', 'cancelled'].includes(finalData.status)) {
+                  // Task actually completed — process it instead of expiring
+                  await processPendingTask(log);
+                  recovered = true;
+                  logger.info(`Recovered task ${log.taskId} with status ${finalData.status} before expiring`);
+                }
+              }
+            }
+          } catch (err) {
+            logger.error({ err, taskId: log.taskId }, `Final check failed for task ${log.taskId}, will expire`);
+          }
 
-          const ucc = concurrencyCache.get(log.userId);
-          if (ucc && ucc.active > 0) ucc.active--;
-          logger.info(`Auto-expired stuck task ${log.taskId}`);
+          if (!recovered) {
+            await db.transaction(async (tx) => {
+              await tx.update(schema.usageLogs)
+                .set({ status: 'expired', updatedAt: new Date() })
+                .where(and(
+                  eq(schema.usageLogs.id, log.id),
+                  eq(schema.usageLogs.status, 'pending')
+                ));
+            });
+
+            const ucc = concurrencyCache.get(log.userId);
+            if (ucc && ucc.active > 0) ucc.active--;
+            logger.info(`Auto-expired stuck task ${log.taskId}`);
+          }
         }
       }
 
