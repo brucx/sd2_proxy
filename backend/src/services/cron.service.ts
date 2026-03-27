@@ -137,23 +137,28 @@ export function startCronJobs() {
           }
 
           if (!recovered) {
+            let expiredUpdated = false;
             await db.transaction(async (tx) => {
-              await tx.update(schema.usageLogs)
+              const updateResult = await tx.update(schema.usageLogs)
                 .set({ status: 'expired', updatedAt: new Date() })
                 .where(and(
                   eq(schema.usageLogs.id, log.id),
                   eq(schema.usageLogs.status, 'pending')
-                ));
+                ))
+                .returning({ id: schema.usageLogs.id });
+              expiredUpdated = updateResult.length > 0;
             });
 
-            const ucc = concurrencyCache.get(log.userId);
-            if (ucc && ucc.active > 0) ucc.active--;
-            
-            if (log.keyId) {
-              const kcc = keyConcurrencyCache.get(log.keyId) || 0;
-              if (kcc > 0) keyConcurrencyCache.set(log.keyId, kcc - 1);
+            if (expiredUpdated) {
+              const ucc = concurrencyCache.get(log.userId);
+              if (ucc && ucc.active > 0) ucc.active--;
+              
+              if (log.keyId) {
+                const kcc = keyConcurrencyCache.get(log.keyId) || 0;
+                if (kcc > 0) keyConcurrencyCache.set(log.keyId, kcc - 1);
+              }
+              logger.info(`Auto-expired stuck task ${log.taskId}`);
             }
-            logger.info(`Auto-expired stuck task ${log.taskId}`);
           }
         }
       }
