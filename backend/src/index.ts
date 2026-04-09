@@ -19,7 +19,8 @@ import { startCronJobs, stopCronJobs } from './services/cron.service.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { adminRoutes } from './routes/admin.routes.js';
 import { tenantRoutes } from './routes/tenant.routes.js';
-import { proxyRoutes } from './routes/proxy.routes.js';
+import { proxyRoutes, createHandler, getResultHandler } from './routes/proxy.routes.js';
+import { proxyAuthMiddleware } from './middlewares/proxy.middleware.js';
 
 const app = new Hono<{ Variables: AppVariables }>();
 
@@ -53,6 +54,8 @@ app.route('/api/panel', authRoutes);
 app.route('/api/panel/admin', adminRoutes);
 app.route('/api/panel', tenantRoutes); 
 app.route('/api/v1/doubao', proxyRoutes);
+app.post('/api/v3/contents/generations/tasks', proxyAuthMiddleware, createHandler);
+app.get('/api/v3/contents/generations/tasks/:id', proxyAuthMiddleware, getResultHandler);
 
 // Setup Initial Admin (Run once)
 const setupInitialAdmin = async () => {

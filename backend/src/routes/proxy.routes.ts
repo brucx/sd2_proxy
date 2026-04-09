@@ -10,7 +10,7 @@ import type { AppVariables } from '../types.js';
 
 export const proxyRoutes = new Hono<{ Variables: AppVariables }>();
 
-proxyRoutes.post('/create', proxyAuthMiddleware, async (c) => {
+export const createHandler = async (c: any) => {
   const keyRecord = c.get('keyRecord');
   const body = await c.req.json();
   const startTime = Date.now();
@@ -124,11 +124,16 @@ proxyRoutes.post('/create', proxyAuthMiddleware, async (c) => {
     }).catch(err => console.error('Request log insert error:', err));
     return c.json({ error: 'Internal Server Error' }, 500);
   }
-});
+};
 
-proxyRoutes.post('/get_result', proxyAuthMiddleware, async (c) => {
+export const getResultHandler = async (c: any) => {
   const keyRecord = c.get('keyRecord');
-  const body = await c.req.json();
+  let body: any = {};
+  if (c.req.method === 'GET') {
+    body = { id: c.req.param('id') };
+  } else {
+    body = await c.req.json();
+  }
   const startTime = Date.now();
   const clientIp = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown';
   const requestBodyStr = JSON.stringify(body);
@@ -228,4 +233,7 @@ proxyRoutes.post('/get_result', proxyAuthMiddleware, async (c) => {
     }).catch(err => console.error('Request log insert error:', err));
     return c.json({ error: 'Internal Server Error' }, 500);
   }
-});
+};
+
+proxyRoutes.post('/create', proxyAuthMiddleware, createHandler);
+proxyRoutes.post('/get_result', proxyAuthMiddleware, getResultHandler);

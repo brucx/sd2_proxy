@@ -39,7 +39,7 @@ function Playground() {
 
   const buildCurlCreate = (body: any) => {
     const key = apiKey || 'YOUR_API_KEY';
-    return `curl -X POST '${baseUrl}/api/v1/doubao/create' \\
+    return `curl -X POST '${baseUrl}/api/v3/contents/generations/tasks' \\
   -H 'Content-Type: application/json' \\
   -H 'Authorization: Bearer ${key}' \\
   -d '${JSON.stringify(body, null, 2)}'`;
@@ -48,10 +48,8 @@ function Playground() {
   const buildCurlGetResult = () => {
     const key = apiKey || 'YOUR_API_KEY';
     const tid = taskId || 'TASK_ID';
-    return `curl -X POST '${baseUrl}/api/v1/doubao/get_result' \\
-  -H 'Content-Type: application/json' \\
-  -H 'Authorization: Bearer ${key}' \\
-  -d '{"id": "${tid}"}'`;
+    return `curl -X GET '${baseUrl}/api/v3/contents/generations/tasks/${tid}' \\
+  -H 'Authorization: Bearer ${key}'`;
   };
 
   const copyCurl = useCallback(async (text: string) => {
@@ -177,7 +175,7 @@ function Playground() {
     setLoading(true);
     try {
       const res = await axios.post(
-        '/api/v1/doubao/create',
+        '/api/v3/contents/generations/tasks',
         requestBody,
         { headers: { Authorization: `Bearer ${apiKey}` } }
       );
@@ -190,11 +188,11 @@ function Playground() {
   };
 
   const handleGetResult = async () => {
+    if (!taskId.trim()) return;
     setLoading(true);
     try {
-      const res = await axios.post(
-        '/api/v1/doubao/get_result',
-        { id: taskId },
+      const res = await axios.get(
+        `/api/v3/contents/generations/tasks/${taskId.trim()}`,
         { headers: { Authorization: `Bearer ${apiKey}` } }
       );
       setResponse(res.data);
@@ -615,7 +613,7 @@ function Playground() {
               </div>
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-medium text-gray-600">查询结果 (get_result)</span>
+                  <span className="text-xs font-medium text-gray-600">查询结果 (GET /tasks/:id)</span>
                   <button
                     onClick={() => copyCurl(buildCurlGetResult())}
                     className="text-xs px-2 py-0.5 rounded bg-gray-100 hover:bg-blue-100 text-gray-500 hover:text-blue-600 transition-colors"
@@ -641,13 +639,13 @@ function Playground() {
           {showResponseExample && (
             <div className="space-y-3">
               <div>
-                <span className="text-xs font-medium text-gray-600 block mb-1">创建任务 /create 返回：</span>
+                <span className="text-xs font-medium text-gray-600 block mb-1">创建任务 /tasks 返回：</span>
                 <pre className="bg-gray-900 text-green-400 p-3 rounded-lg overflow-x-auto text-xs leading-relaxed whitespace-pre-wrap">
                   {JSON.stringify(sampleCreateResponse, null, 2)}
                 </pre>
               </div>
               <div>
-                <span className="text-xs font-medium text-gray-600 block mb-1">查询结果 /get_result 返回：</span>
+                <span className="text-xs font-medium text-gray-600 block mb-1">查询结果 /tasks/:id 返回：</span>
                 <pre className="bg-gray-900 text-blue-300 p-3 rounded-lg overflow-x-auto text-xs leading-relaxed max-h-80 overflow-y-auto whitespace-pre-wrap">
                   {JSON.stringify(sampleGetResultResponse, null, 2)}
                 </pre>
