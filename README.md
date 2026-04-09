@@ -4,7 +4,7 @@
 
 ## 功能特性 (Features)
 
-*   **API 接口转发**: 代理 `/api/v1/doubao/create` 和 `/api/v1/doubao/get_result` 接口。
+*   **API 接口转发**: 提供 `/api/v3/contents/generations/tasks` 接口（及向下兼容原有 `/api/v1/doubao/*` 路由）。
 *   **多租户架构**: 支持 Admin（管理员）和 Tenant（租户）两种角色。管理员可以创建租户，租户可以管理自己的多个子 API Key。
 *   **安全认证**: 租户在调用 API 时通过 `Authorization: Bearer <子 Key>` 进行鉴权，系统会在后端将其替换为统一的真实主 Key。
 *   **内存级限流 (Rate Limiting)**: 每个子 Key 默认限制每分钟最多 60 次请求（60 RPM），防止滥用。
@@ -109,10 +109,10 @@ npm start
 
 租户在面板中获取到属于自己的 `sk-...` 格式的 API Key 后，可以像直接调用官方 API 一样使用本中转站（替换域名和鉴权头即可）：
 
-**1. 创建任务 (`/api/v1/doubao/create`)**
+**1. 创建任务 (`/api/v3/contents/generations/tasks`)**
 
 ```bash
-curl -X POST http://<YOUR_DOMAIN>:3000/api/v1/doubao/create \
+curl -X POST http://<YOUR_DOMAIN>:3000/api/v3/contents/generations/tasks \
 -H "Content-Type: application/json" \
 -H "Authorization: Bearer <你的子_API_KEY>" \
 -d '{
@@ -129,11 +129,9 @@ curl -X POST http://<YOUR_DOMAIN>:3000/api/v1/doubao/create \
 }'
 ```
 
-**2. 查询结果 (`/api/v1/doubao/get_result`)**
+**2. 查询结果 (`/api/v3/contents/generations/tasks/:id`)**
 
 ```bash
-curl -X POST http://<YOUR_DOMAIN>:3000/api/v1/doubao/get_result \
--H "Content-Type: application/json" \
--H "Authorization: Bearer <你的子_API_KEY>" \
--d '{"id": "<创建任务返回的ID>"}'
+curl -X GET http://<YOUR_DOMAIN>:3000/api/v3/contents/generations/tasks/<创建任务返回的ID> \
+-H "Authorization: Bearer <你的子_API_KEY>"
 ```
