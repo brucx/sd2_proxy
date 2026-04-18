@@ -49,11 +49,11 @@ export default function TenantDashboard({
   };
 
   const updateKeyProvider = async (keyId: number, current: string | null) => {
-    const input = window.prompt('设置该 Key 的 Provider（meitu / evolink / auto，留空表示跟随账户默认）：', current || '');
+    const input = window.prompt('设置该 Key 的 Provider（meitu / evolink / ark / auto，留空表示跟随账户默认）：', current || '');
     if (input === null) return;
     const value = input.trim().toLowerCase();
-    if (value !== '' && !['meitu', 'evolink', 'auto'].includes(value)) {
-      alert('Provider 必须为 meitu / evolink / auto');
+    if (value !== '' && !['meitu', 'evolink', 'ark', 'auto'].includes(value)) {
+      alert('Provider 必须为 meitu / evolink / ark / auto');
       return;
     }
     try {
@@ -223,6 +223,7 @@ export default function TenantDashboard({
               <option value="">跟随账户默认</option>
               <option value="meitu">Meitu</option>
               <option value="evolink">Evolink</option>
+              <option value="ark">Ark</option>
               <option value="auto">Auto (Meitu→Evolink)</option>
             </select>
           </div>
@@ -246,7 +247,7 @@ export default function TenantDashboard({
                 </td>
                 <td className="p-2 text-sm">
                   {k.provider
-                    ? <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${k.provider === 'evolink' ? 'bg-purple-100 text-purple-700' : k.provider === 'auto' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{k.provider}</span>
+                    ? <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${k.provider === 'evolink' ? 'bg-purple-100 text-purple-700' : k.provider === 'auto' ? 'bg-amber-100 text-amber-700' : k.provider === 'ark' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>{k.provider}</span>
                     : <span className="text-gray-400 text-xs">跟随账户</span>}
                 </td>
                 <td className="p-2 text-sm">
@@ -290,7 +291,7 @@ export default function TenantDashboard({
               </div>
               <div className="flex gap-4 text-xs text-gray-600 mt-1 flex-wrap">
                 <span>Provider: {k.provider
-                  ? <span className={`inline-block px-1.5 py-0.5 rounded font-medium ${k.provider === 'evolink' ? 'bg-purple-100 text-purple-700' : k.provider === 'auto' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{k.provider}</span>
+                  ? <span className={`inline-block px-1.5 py-0.5 rounded font-medium ${k.provider === 'evolink' ? 'bg-purple-100 text-purple-700' : k.provider === 'auto' ? 'bg-amber-100 text-amber-700' : k.provider === 'ark' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>{k.provider}</span>
                   : <span className="text-gray-400">跟随账户</span>}</span>
                 <span>配额: {k.quotaLimit !== null && k.quotaLimit !== undefined
                   ? <span className={parseFloat(k.quotaUsed || '0') >= parseFloat(k.quotaLimit) ? 'text-red-600 font-semibold' : ''}>¥{parseFloat(k.quotaUsed || '0').toFixed(2)}/{parseFloat(k.quotaLimit).toFixed(2)}</span>

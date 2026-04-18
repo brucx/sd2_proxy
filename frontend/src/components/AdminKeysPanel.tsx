@@ -54,11 +54,11 @@ export default function AdminKeysPanel({ users }: Props) {
   };
 
   const updateKeyProvider = async (keyId: number, current: string | null) => {
-    const input = window.prompt('设置该 Key 的 Provider（meitu / evolink / auto，留空表示跟随用户默认）：', current || '');
+    const input = window.prompt('设置该 Key 的 Provider（meitu / evolink / ark / auto，留空表示跟随用户默认）：', current || '');
     if (input === null) return;
     const value = input.trim().toLowerCase();
-    if (value !== '' && !['meitu', 'evolink', 'auto'].includes(value)) {
-      alert('Provider 必须为 meitu / evolink / auto');
+    if (value !== '' && !['meitu', 'evolink', 'ark', 'auto'].includes(value)) {
+      alert('Provider 必须为 meitu / evolink / ark / auto');
       return;
     }
     try {
@@ -107,6 +107,7 @@ export default function AdminKeysPanel({ users }: Props) {
             <option value="">跟随用户默认</option>
             <option value="meitu">Meitu</option>
             <option value="evolink">Evolink</option>
+            <option value="ark">Ark</option>
             <option value="auto">Auto (Meitu→Evolink)</option>
           </select>
         </div>
@@ -132,7 +133,7 @@ export default function AdminKeysPanel({ users }: Props) {
               </td>
               <td className="p-2 text-xs">
                 {k.provider
-                  ? <span className={`inline-block px-2 py-0.5 rounded font-medium ${k.provider === 'evolink' ? 'bg-purple-100 text-purple-700' : k.provider === 'auto' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{k.provider}</span>
+                  ? <span className={`inline-block px-2 py-0.5 rounded font-medium ${k.provider === 'evolink' ? 'bg-purple-100 text-purple-700' : k.provider === 'auto' ? 'bg-amber-100 text-amber-700' : k.provider === 'ark' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>{k.provider}</span>
                   : <span className="text-gray-400">跟随用户 ({k.userProvider})</span>}
               </td>
               <td className="p-2">
@@ -166,7 +167,7 @@ export default function AdminKeysPanel({ users }: Props) {
             <div className="text-sm text-gray-600">User: {k.username}</div>
             <div className="text-xs text-gray-600">
               Provider: {k.provider
-                ? <span className={`inline-block px-1.5 py-0.5 rounded font-medium ${k.provider === 'evolink' ? 'bg-purple-100 text-purple-700' : k.provider === 'auto' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{k.provider}</span>
+                ? <span className={`inline-block px-1.5 py-0.5 rounded font-medium ${k.provider === 'evolink' ? 'bg-purple-100 text-purple-700' : k.provider === 'auto' ? 'bg-amber-100 text-amber-700' : k.provider === 'ark' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>{k.provider}</span>
                 : <span className="text-gray-400">跟随用户 ({k.userProvider})</span>}
             </div>
             <div className="flex items-center justify-between mt-1">
