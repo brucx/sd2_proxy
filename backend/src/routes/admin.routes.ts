@@ -97,6 +97,7 @@ adminRoutes.get('/users', async (c) => {
     status: schema.users.status,
     concurrencyLimit: schema.users.concurrencyLimit, 
     balance: schema.users.balance, 
+    provider: schema.users.provider,
     createdAt: schema.users.createdAt 
   }).from(schema.users);
   
@@ -137,6 +138,20 @@ adminRoutes.put('/users/:id/concurrency', async (c) => {
   if (cc) { cc.limit = concurrencyLimit; }
   else { concurrencyCache.set(userId, { limit: concurrencyLimit, active: 0 }); }
   
+  return c.json({ success: true });
+});
+
+// Admin: Update user provider
+adminRoutes.put('/users/:id/provider', async (c) => {
+  const userId = parseInt(c.req.param('id'));
+  const { provider } = await c.req.json();
+  if (!provider || !['ark', 'evolink'].includes(provider)) {
+    return c.json({ error: 'Provider 必须为 ark 或 evolink' }, 400);
+  }
+  const targetUser = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+  if (targetUser.length === 0) return c.json({ error: 'User not found' }, 404);
+  
+  await db.update(schema.users).set({ provider }).where(eq(schema.users.id, userId));
   return c.json({ success: true });
 });
 

@@ -27,4 +27,21 @@ export const config = {
         'doubao-seedance-2-0': 'ep-20260307130721-bx7tv',
         'doubao-seedance-2-0-260128': 'ep-20260307130721-bx7tv',
       } as Record<string, string>,
+
+  // -- Evolink Provider --
+  EVOLINK_API_KEY: process.env.EVOLINK_API_KEY || '',
+  EVOLINK_URL: process.env.EVOLINK_URL || 'https://api.evolink.ai',
+  USD_TO_CNY_RATE: parseFloat(process.env.USD_TO_CNY_RATE || '7.25'),
+  // Evolink credit exchange rate: $100 = 6800 Credits → 68 Credits per USD
+  EVOLINK_CREDITS_PER_USD: parseFloat(process.env.EVOLINK_CREDITS_PER_USD || '68'),
+  // Evolink model base mapping: user model name → Evolink model base name
+  // The actual mode (text/image/reference) is inferred dynamically from request body
+  EVOLINK_MODEL_BASE: process.env.EVOLINK_MODEL_BASE
+    ? JSON.parse(process.env.EVOLINK_MODEL_BASE)
+    : {
+        'doubao-seedance-2.0-fast': 'seedance-2.0-fast',
+        'doubao-seedance-2.0-fast-260128': 'seedance-2.0-fast',
+        'doubao-seedance-2-0': 'seedance-2.0',
+        'doubao-seedance-2-0-260128': 'seedance-2.0',
+      } as Record<string, string>,
 };

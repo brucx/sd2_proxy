@@ -8,6 +8,7 @@ export const users = pgTable('users', {
   status: varchar('status', { length: 20 }).notNull().default('active'), // 'active' or 'suspended'
   concurrencyLimit: integer('concurrency_limit').notNull().default(3),
   balance: numeric('balance', { precision: 20, scale: 4 }).notNull().default('0'),
+  provider: varchar('provider', { length: 50 }).notNull().default('ark'), // 'ark' | 'evolink'
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -37,6 +38,10 @@ export const usageLogs = pgTable('usage_logs', {
   hasVideoInput: boolean('has_video_input').notNull().default(false),
   costYuan: text('cost_yuan').notNull().default('0'),
   status: varchar('status', { length: 50 }).default('pending'), // 'pending', 'succeeded', 'failed'
+  provider: varchar('provider', { length: 50 }).notNull().default('ark'), // 'ark' | 'evolink'
+  videoDuration: integer('video_duration'),  // Evolink: output video duration in seconds
+  videoQuality: varchar('video_quality', { length: 10 }), // Evolink: '480p' | '720p' | '1080p'
+  creditsReserved: numeric('credits_reserved', { precision: 20, scale: 4 }), // Evolink: credits_reserved from create response — authoritative for billing
   resultData: text('result_data'), // 任务完成时的上游完整响应 JSON
   requestBody: text('request_body'), // 原始请求体（截断至 8K）
   createdAt: timestamp('created_at').defaultNow().notNull(),

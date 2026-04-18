@@ -4,6 +4,7 @@ import * as schema from '../db/schema.js';
 import { eq, and, sql, lt } from 'drizzle-orm';
 import { config } from '../config.js';
 import { calculateCost } from '../utils/cost.util.js';
+import { getProvider } from '../providers/index.js';
 import { concurrencyCache, keyConcurrencyCache } from './concurrency.service.js';
 import { logger } from '../utils/logger.util.js';
 
@@ -15,30 +16,37 @@ const processPendingTask = async (log: any) => {
   try {
     if (!log.taskId) return;
 
-    const upstreamRes = await fetch(`${config.UPSTREAM_URL}/api/v1/doubao/get_result`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.ARK_API_KEY}`
-      },
-      body: JSON.stringify({ id: log.taskId })
-    });
+    const provider = getProvider(log.provider || 'ark');
+    const result = await provider.queryTask(log.taskId);
 
-    if (upstreamRes.ok) {
-      const data: any = await upstreamRes.json();
-      if (['succeeded', 'failed', 'cancelled', 'expired'].includes(data.status)) {
-        const completionTokens = data.usage?.completion_tokens || 0;
-        const cost = data.status === 'succeeded' ? calculateCost(completionTokens, log.hasVideoInput) : '0';
+    if (result.statusCode >= 200 && result.statusCode < 300) {
+      const normalizedStatus = result.rawResponse.status;
+      if (['succeeded', 'failed', 'cancelled', 'expired'].includes(normalizedStatus)) {
+        // Calculate cost using provider-appropriate method
+        let cost = '0';
+        if (normalizedStatus === 'succeeded') {
+          // For Evolink, prefer persisted credits_reserved (captured at create time).
+          const storedCredits = log.creditsReserved ? parseFloat(log.creditsReserved) : undefined;
+          cost = calculateCost(log.provider || 'ark', {
+            completionTokens: result.completionTokens || 0,
+            hasVideo: log.hasVideoInput,
+            duration: result.duration || log.videoDuration || 5,
+            quality: log.videoQuality || '720p',
+            ...(typeof storedCredits === 'number' ? { credits: storedCredits } : {}),
+          });
+        }
         
         // Optimistic lock: only update if status is 'pending' or 'expired' to allow recovery
         let statusUpdated = false;
         await db.transaction(async (tx) => {
           const updateResult = await tx.update(schema.usageLogs)
             .set({
-              status: data.status,
-              completionTokens: completionTokens,
+              status: normalizedStatus,
+              completionTokens: result.completionTokens || 0,
+              // Update Evolink video duration if provided by upstream
+              ...(result.duration ? { videoDuration: result.duration } : {}),
               costYuan: cost,
-              resultData: JSON.stringify(data),
+              resultData: JSON.stringify(result.rawResponse),
               updatedAt: new Date()
             })
             .where(and(
@@ -50,7 +58,7 @@ const processPendingTask = async (log: any) => {
           statusUpdated = updateResult.length > 0;
 
           // Only deduct balance if we actually transitioned from pending
-          if (statusUpdated && data.status === 'succeeded' && parseFloat(cost) > 0) {
+          if (statusUpdated && normalizedStatus === 'succeeded' && parseFloat(cost) > 0) {
             await tx.update(schema.users)
               .set({ balance: sql`${schema.users.balance} - ${cost}` })
               .where(eq(schema.users.id, log.userId));
@@ -74,7 +82,7 @@ const processPendingTask = async (log: any) => {
           }
         }
         
-        logger.info(`Updated task ${log.taskId} status to ${data.status}, cost: ¥${cost}, applied: ${statusUpdated}`);
+        logger.info(`[${log.provider || 'ark'}] Updated task ${log.taskId} status to ${normalizedStatus}, cost: ¥${cost}, applied: ${statusUpdated}`);
       }
     }
   } catch (err) {
@@ -104,31 +112,24 @@ export function startCronJobs() {
         logger.info(`Attempted recovery of ${expiredLogs.length} expired tasks`);
       }
 
-      // Auto-expire stuck tasks (with a final get_result check before expiring)
+      // Auto-expire stuck tasks (with a final check before expiring)
       const now = Date.now();
       const stillPending = await db.select().from(schema.usageLogs).where(eq(schema.usageLogs.status, 'pending'));
       for (const log of stillPending) {
         const age = now - new Date(log.createdAt).getTime();
         if (age > config.PENDING_TIMEOUT_MS) {
-          // Final get_result check before expiring
+          // Final check before expiring — use appropriate provider
           let recovered = false;
           try {
             if (log.taskId) {
-              const finalCheck = await fetch(`${config.UPSTREAM_URL}/api/v1/doubao/get_result`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${config.ARK_API_KEY}`
-                },
-                body: JSON.stringify({ id: log.taskId })
-              });
-              if (finalCheck.ok) {
-                const finalData: any = await finalCheck.json();
-                if (['succeeded', 'failed', 'cancelled'].includes(finalData.status)) {
-                  // Task actually completed — process it instead of expiring
+              const provider = getProvider(log.provider || 'ark');
+              const finalResult = await provider.queryTask(log.taskId);
+              if (finalResult.statusCode >= 200 && finalResult.statusCode < 300) {
+                const finalStatus = finalResult.rawResponse.status;
+                if (['succeeded', 'failed', 'cancelled'].includes(finalStatus)) {
                   await processPendingTask(log);
                   recovered = true;
-                  logger.info(`Recovered task ${log.taskId} with status ${finalData.status} before expiring`);
+                  logger.info(`Recovered task ${log.taskId} with status ${finalStatus} before expiring`);
                 }
               }
             }

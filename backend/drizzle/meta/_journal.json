@@ -15,6 +15,20 @@
       "when": 1774342919757,
       "tag": "0001_careful_prima",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776493851464,
+      "tag": "0002_broken_frank_castle",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776499948514,
+      "tag": "0003_add_credits_reserved",
+      "breakpoints": true
     }
   ]
 }

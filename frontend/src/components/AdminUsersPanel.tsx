@@ -71,6 +71,15 @@ export default function AdminUsersPanel({ users, onRefresh }: Props) {
     onRefresh();
   };
 
+  const updateProvider = async (userId: number, provider: string) => {
+    try {
+      await api.put(`/admin/users/${userId}/provider`, { provider });
+      onRefresh();
+    } catch (err: any) {
+      alert(err.response?.data?.error || '切换失败');
+    }
+  };
+
   return (
     <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
       <h2 className="text-xl font-bold mb-4">Users Management</h2>
@@ -82,7 +91,7 @@ export default function AdminUsersPanel({ users, onRefresh }: Props) {
       {/* Desktop Table */}
       <table className="w-full text-left border-collapse hidden md:table">
         <thead>
-          <tr className="border-b bg-gray-50"><th className="p-2">ID</th><th className="p-2">Username</th><th className="p-2">Role</th><th className="p-2">状态</th><th className="p-2">余额(元)</th><th className="p-2">并发限制</th><th className="p-2">操作</th></tr>
+          <tr className="border-b bg-gray-50"><th className="p-2">ID</th><th className="p-2">Username</th><th className="p-2">Role</th><th className="p-2">状态</th><th className="p-2">Provider</th><th className="p-2">余额(元)</th><th className="p-2">并发限制</th><th className="p-2">操作</th></tr>
         </thead>
         <tbody>
           {users.map(u => (
@@ -94,6 +103,16 @@ export default function AdminUsersPanel({ users, onRefresh }: Props) {
                 <button onClick={() => toggleUserStatus(u.id)} className={`inline-block px-2 py-0.5 rounded text-xs font-medium cursor-pointer ${u.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
                   {u.status === 'active' ? '正常' : '已封禁'}
                 </button>
+              </td>
+              <td className="p-2">
+                <select
+                  value={u.provider || 'ark'}
+                  onChange={e => updateProvider(u.id, e.target.value)}
+                  className={`text-xs font-medium px-2 py-1 rounded border cursor-pointer ${u.provider === 'evolink' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}
+                >
+                  <option value="ark">Ark</option>
+                  <option value="evolink">Evolink</option>
+                </select>
               </td>
               <td className="p-2">
                 <span className={`font-mono text-sm font-semibold ${parseFloat(u.balance || '0') <= 0 ? 'text-red-600' : 'text-green-600'}`}>¥{parseFloat(u.balance || '0').toFixed(2)}</span>
@@ -154,6 +173,17 @@ export default function AdminUsersPanel({ users, onRefresh }: Props) {
               <span className="text-xs text-gray-500 bg-gray-200 px-2 py-1 rounded">ID: {u.id}</span>
             </div>
             <div className="text-sm text-gray-600">Created: {new Date(u.createdAt).toLocaleDateString()}</div>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-gray-600">Provider:</span>
+              <select
+                value={u.provider || 'ark'}
+                onChange={e => updateProvider(u.id, e.target.value)}
+                className={`text-xs font-medium px-2 py-1 rounded border cursor-pointer ${u.provider === 'evolink' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}
+              >
+                <option value="ark">Ark</option>
+                <option value="evolink">Evolink</option>
+              </select>
+            </div>
             <div className="flex items-center gap-2 text-sm">
               <span className="text-gray-600">余额:</span>
               <span className={`font-mono font-semibold ${parseFloat(u.balance || '0') <= 0 ? 'text-red-600' : 'text-green-600'}`}>¥{parseFloat(u.balance || '0').toFixed(2)}</span>

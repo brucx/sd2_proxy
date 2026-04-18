@@ -1,0 +1,1 @@
+ALTER TABLE "usage_logs" ADD COLUMN "credits_reserved" numeric(20, 4);

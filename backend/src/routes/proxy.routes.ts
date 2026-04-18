@@ -6,6 +6,7 @@ import { config } from '../config.js';
 import { calculateCost, detectVideoInput } from '../utils/cost.util.js';
 import { proxyAuthMiddleware } from '../middlewares/proxy.middleware.js';
 import { concurrencyCache, keyConcurrencyCache } from '../services/concurrency.service.js';
+import { getProvider } from '../providers/index.js';
 import type { AppVariables } from '../types.js';
 
 export const proxyRoutes = new Hono<{ Variables: AppVariables }>();
@@ -16,12 +17,18 @@ export const createHandler = async (c: any) => {
   const startTime = Date.now();
   const clientIp = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown';
 
-  // Balance check
+  // Balance check — also fetch user's provider setting
   const userId = keyRecord.userId;
-  const userRecord = await db.select({ balance: schema.users.balance }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+  const userRecord = await db.select({
+    balance: schema.users.balance,
+    provider: schema.users.provider,
+  }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+
   if (userRecord.length > 0 && parseFloat(userRecord[0]!.balance) <= 0) {
     return c.json({ error: '余额不足，请联系管理员充值' }, 403);
   }
+
+  const provider = userRecord[0]?.provider || 'ark';
 
   // Key quota check
   if (keyRecord.quotaLimit !== null && keyRecord.quotaLimit !== undefined) {
@@ -51,39 +58,35 @@ export const createHandler = async (c: any) => {
 
   const originalBody = JSON.stringify(body);
 
-  const userModel = body.model;
-  const mappedModel = config.MODEL_MAPPING[userModel];
-  if (!mappedModel) {
-    cc.active--; 
-    return c.json({
-      error: `Unsupported model: "${userModel}". Supported models: ${Object.keys(config.MODEL_MAPPING).join(', ')}`
-    }, 400);
-  }
-  body.model = mappedModel;
-
   try {
-    const upstreamRes = await fetch(`${config.UPSTREAM_URL}/api/v1/doubao/create`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.ARK_API_KEY}`
-      },
-      body: JSON.stringify(body)
-    });
+    // Delegate to the appropriate upstream provider
+    const upstream = getProvider(provider);
+    const result = await upstream.createTask(body);
 
-    const data: any = await upstreamRes.json();
     const durationMs = Date.now() - startTime;
-    const responseBody = JSON.stringify(data);
+    const responseBody = JSON.stringify(result.rawResponse);
     const isVideoInput = detectVideoInput(JSON.parse(originalBody));
 
-    if (upstreamRes.ok && data.id) {
+    if (result.statusCode >= 200 && result.statusCode < 300 && result.taskId) {
+      // Evolink-specific billing fields; Ark has no top-level duration/quality/credits.
+      const evolinkFields = provider === 'evolink'
+        ? {
+            videoDuration: body.duration || null,
+            videoQuality: body.quality || '720p',
+            // credits_reserved from upstream create response — authoritative billing value.
+            creditsReserved: typeof result.credits === 'number' ? String(result.credits) : null,
+          }
+        : {};
+
       await db.insert(schema.usageLogs).values({
         userId: keyRecord.userId,
         keyId: keyRecord.id,
         endpoint: '/create',
-        taskId: data.id,
+        taskId: result.taskId,
         hasVideoInput: isVideoInput,
         status: 'pending',
+        provider,
+        ...evolinkFields,
         requestBody: originalBody.substring(0, 8192),
       });
     } else {
@@ -99,13 +102,13 @@ export const createHandler = async (c: any) => {
       method: 'POST',
       requestBody: originalBody,
       responseBody,
-      responseStatus: upstreamRes.status,
+      responseStatus: result.statusCode,
       durationMs,
       ipAddress: clientIp,
     }).catch(err => console.error('Request log insert error:', err));
 
-    c.status(upstreamRes.status as any);
-    return c.json(data);
+    c.status(result.statusCode as any);
+    return c.json(result.rawResponse);
   } catch (error) {
     console.error('Proxy Create Error:', error);
     cc.active--;
@@ -160,41 +163,55 @@ export const getResultHandler = async (c: any) => {
   }
 
   try {
-    const upstreamRes = await fetch(`${config.UPSTREAM_URL}/api/v1/doubao/get_result`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.ARK_API_KEY}`
-      },
-      body: JSON.stringify(body)
-    });
+    // Look up existing log to determine provider
+    const existingLog = queryTaskId
+      ? await db.select().from(schema.usageLogs).where(eq(schema.usageLogs.taskId, queryTaskId)).limit(1)
+      : [];
+    const logProvider = existingLog.length > 0 ? (existingLog[0]!.provider || 'ark') : 'ark';
 
-    const data: any = await upstreamRes.json();
+    // Use the correct provider for querying
+    const upstream = getProvider(logProvider);
+    const result = await upstream.queryTask(queryTaskId);
+
     const durationMs = Date.now() - startTime;
-    const responseBody = JSON.stringify(data);
+    const responseBody = JSON.stringify(result.rawResponse);
 
-    if (upstreamRes.ok && data.status) {
-      if (data.status === 'succeeded' || data.status === 'failed') {
-        const completionTokens = data.usage?.completion_tokens || 0;
-        const existingLog = await db.select().from(schema.usageLogs).where(eq(schema.usageLogs.taskId, data.id)).limit(1);
-        
+    if (result.statusCode >= 200 && result.statusCode < 300 && result.rawResponse.status) {
+      const normalizedStatus = result.rawResponse.status; // Already normalized by provider
+      if (normalizedStatus === 'succeeded' || normalizedStatus === 'failed') {
         if (existingLog.length > 0) {
-            const hasVideo = existingLog[0]?.hasVideoInput ?? false;
-            const cost = data.status === 'succeeded' ? calculateCost(completionTokens, hasVideo) : '0';
+            // Calculate cost using provider-appropriate method
+            let cost = '0';
+            if (normalizedStatus === 'succeeded') {
+              // For Evolink, prefer persisted credits_reserved (captured at create time —
+              // query endpoint never exposes usage). Fall back to per-second table.
+              const storedCredits = existingLog[0]?.creditsReserved
+                ? parseFloat(existingLog[0].creditsReserved)
+                : undefined;
+              cost = calculateCost(logProvider, {
+                completionTokens: result.completionTokens || 0,
+                hasVideo: existingLog[0]?.hasVideoInput ?? false,
+                duration: result.duration || existingLog[0]?.videoDuration || 5,
+                quality: existingLog[0]?.videoQuality || '720p',
+                ...(typeof storedCredits === 'number' ? { credits: storedCredits } : {}),
+              });
+            }
 
             // Optimistic lock: only update if status is 'pending' or 'expired' to allow recovery
             let statusUpdated = false;
             await db.transaction(async (tx) => {
               const updateResult = await tx.update(schema.usageLogs)
                 .set({
-                  status: data.status,
-                  completionTokens: completionTokens,
+                  status: normalizedStatus,
+                  completionTokens: result.completionTokens || 0,
+                  // Update Evolink video duration if provided by upstream
+                  ...(result.duration ? { videoDuration: result.duration } : {}),
                   costYuan: cost,
-                  resultData: JSON.stringify(data),
+                  resultData: responseBody,
                   updatedAt: new Date()
                 })
                 .where(and(
-                  eq(schema.usageLogs.taskId, data.id),
+                  eq(schema.usageLogs.taskId, queryTaskId),
                   sql`${schema.usageLogs.status} IN ('pending', 'expired')`
                 ))
                 .returning({ id: schema.usageLogs.id });
@@ -202,7 +219,7 @@ export const getResultHandler = async (c: any) => {
               statusUpdated = updateResult.length > 0;
 
               // Only deduct balance if we actually transitioned from pending or recovered from expired
-              if (statusUpdated && data.status === 'succeeded' && parseFloat(cost) > 0) {
+              if (statusUpdated && normalizedStatus === 'succeeded' && parseFloat(cost) > 0) {
                 await tx.update(schema.users)
                   .set({ balance: sql`${schema.users.balance} - ${cost}` })
                   .where(eq(schema.users.id, existingLog[0]!.userId));
@@ -229,23 +246,23 @@ export const getResultHandler = async (c: any) => {
       userId: keyRecord.userId,
       keyId: keyRecord.id,
       endpoint: '/get_result',
-      method: 'POST',
+      method: c.req.method,
       requestBody: requestBodyStr,
       responseBody,
-      responseStatus: upstreamRes.status,
+      responseStatus: result.statusCode,
       durationMs,
       ipAddress: clientIp,
     }).catch(err => console.error('Request log insert error:', err));
 
-    c.status(upstreamRes.status as any);
-    return c.json(data);
+    c.status(result.statusCode as any);
+    return c.json(result.rawResponse);
   } catch (error) {
     console.error('Proxy Get Result Error:', error);
     db.insert(schema.requestLogs).values({
       userId: keyRecord.userId,
       keyId: keyRecord.id,
       endpoint: '/get_result',
-      method: 'POST',
+      method: c.req.method,
       requestBody: requestBodyStr,
       responseBody: JSON.stringify({ error: 'Internal Server Error' }),
       responseStatus: 500,
