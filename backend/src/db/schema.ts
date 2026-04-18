@@ -40,7 +40,10 @@ export const usageLogs = pgTable('usage_logs', {
   hasVideoInput: boolean('has_video_input').notNull().default(false),
   costYuan: text('cost_yuan').notNull().default('0'),
   status: varchar('status', { length: 50 }).default('pending'), // 'pending', 'succeeded', 'failed'
-  provider: varchar('provider', { length: 50 }).notNull().default('meitu'), // 'meitu' | 'evolink'
+  provider: varchar('provider', { length: 50 }).notNull().default('meitu'), // 'meitu' | 'evolink' (actual provider currently servicing the task)
+  autoMode: boolean('auto_mode').notNull().default(false),                  // task was created under user/key provider='auto' — eligible for moderation fallback
+  fallbackFromProvider: varchar('fallback_from_provider', { length: 32 }),  // non-null once we've fallen back; gates the fallback to a single hop
+  fallbackReason: text('fallback_reason'),                                  // upstream error code that triggered fallback (audit/debug)
   videoDuration: integer('video_duration'),  // Evolink: output video duration in seconds
   videoQuality: varchar('video_quality', { length: 10 }), // Evolink: '480p' | '720p' | '1080p'
   creditsReserved: numeric('credits_reserved', { precision: 20, scale: 4 }), // Evolink: credits_reserved from create response — authoritative for billing
@@ -72,6 +75,10 @@ export const requestLogs = pgTable('request_logs', {
   responseStatus: integer('response_status'),
   durationMs: integer('duration_ms'),
   ipAddress: varchar('ip_address', { length: 100 }),
+  // Marker for the GET /get_result poll that triggered an auto-mode meitu→evolink
+  // fallback. Lets ops filter the log down to the exact transitions instead of
+  // grep-scanning response bodies.
+  fallbackTriggered: boolean('fallback_triggered').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => [
   index('request_logs_user_id_idx').on(table.userId),

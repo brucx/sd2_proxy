@@ -13,6 +13,7 @@ import { proxyAuthMiddleware } from '../middlewares/proxy.middleware.js';
 import { concurrencyCache, keyConcurrencyCache } from '../services/concurrency.service.js';
 import { getProvider } from '../providers/index.js';
 import { generateTaskId } from '../utils/taskId.util.js';
+import { attemptModerationFallback, isFallbackEligible } from '../utils/autoFallback.util.js';
 import type { AppVariables } from '../types.js';
 
 export const proxyRoutes = new Hono<{ Variables: AppVariables }>();
@@ -51,7 +52,11 @@ export const createHandler = async (c: any) => {
   }
 
   // Per-key provider overrides the user-level default; null inherits from user.
-  const provider = keyRecord.provider || userRecord[0]?.provider || 'meitu';
+  // 'auto' is a routing flag — start on Meitu, fall back to Evolink on
+  // moderation-rejection during polling (see utils/autoFallback.util.ts).
+  const configuredProvider = keyRecord.provider || userRecord[0]?.provider || 'meitu';
+  const autoMode = configuredProvider === 'auto';
+  const provider = autoMode ? 'meitu' : configuredProvider;
 
   if (keyRecord.quotaLimit !== null && keyRecord.quotaLimit !== undefined) {
     const used = parseFloat(keyRecord.quotaUsed || '0');
@@ -111,6 +116,7 @@ export const createHandler = async (c: any) => {
         hasVideoInput: isVideoInput,
         status: 'pending',
         provider,
+        autoMode,
         ...evolinkFields,
         requestBody: originalBody.substring(0, 8192),
         upstreamCreateRaw: result.upstreamRaw !== undefined ? JSON.stringify(result.upstreamRaw) : null,
@@ -264,6 +270,53 @@ export const getResultHandler = async (c: any) => {
 
     if (result.statusCode >= 200 && result.statusCode < 300 && publicResponse.status) {
       const normalizedStatus = publicResponse.status;
+
+      // Auto-mode fallback: Meitu rejected on content moderation → re-create
+      // on Evolink transparently and short-circuit this poll with the new
+      // queued response. Status guard checks 'failed'; eligibility (autoMode +
+      // not-already-fallen-back + matching error code) is enforced by the
+      // helper. Concurrency / billing untouched: no terminal write happens.
+      if (normalizedStatus === 'failed') {
+        const failedErrorCode: string | undefined = publicResponse.error?.code;
+        if (isFallbackEligible(existingLog, failedErrorCode)) {
+          const fallback = await attemptModerationFallback({
+            log: existingLog,
+            failedErrorCode,
+            failedQueryRaw: result.upstreamRaw,
+            parsedRequestBody: parsedCreateBody,
+            userModel,
+          });
+          if (fallback.triggered && fallback.arkResponse) {
+            const fallbackResponse: any = { ...fallback.arkResponse, id: publicTaskId };
+            const fallbackRate = lookupArkPricePerMillion({
+              model: userModel,
+              hasVideo: existingLog.hasVideoInput ?? false,
+              quality: existingLog.videoQuality || '720p',
+            });
+            if (fallbackRate > 0) {
+              fallbackResponse.usage = {
+                ...(fallbackResponse.usage ?? {}),
+                rate_cny_per_million: fallbackRate,
+              };
+            }
+            db.insert(schema.requestLogs).values({
+              userId: keyRecord.userId,
+              keyId: keyRecord.id,
+              endpoint: '/get_result',
+              method: c.req.method,
+              requestBody: requestBodyStr,
+              responseBody: JSON.stringify(fallbackResponse),
+              responseStatus: 200,
+              durationMs: Date.now() - startTime,
+              ipAddress: clientIp,
+              fallbackTriggered: true,
+            }).catch(err => console.error('Request log insert error:', err));
+            c.status(200);
+            return c.json(fallbackResponse);
+          }
+        }
+      }
+
       if (normalizedStatus === 'succeeded' || normalizedStatus === 'failed' || normalizedStatus === 'cancelled' || normalizedStatus === 'expired') {
         let cost = '0';
         if (normalizedStatus === 'succeeded') {

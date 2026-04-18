@@ -108,10 +108,11 @@ export default function AdminUsersPanel({ users, onRefresh }: Props) {
                 <select
                   value={u.provider || 'meitu'}
                   onChange={e => updateProvider(u.id, e.target.value)}
-                  className={`text-xs font-medium px-2 py-1 rounded border cursor-pointer ${u.provider === 'evolink' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}
+                  className={`text-xs font-medium px-2 py-1 rounded border cursor-pointer ${u.provider === 'evolink' ? 'bg-purple-50 text-purple-700 border-purple-200' : u.provider === 'auto' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}
                 >
                   <option value="meitu">Meitu</option>
                   <option value="evolink">Evolink</option>
+                  <option value="auto">Auto (Meitu→Evolink)</option>
                 </select>
               </td>
               <td className="p-2">
@@ -178,10 +179,11 @@ export default function AdminUsersPanel({ users, onRefresh }: Props) {
               <select
                 value={u.provider || 'meitu'}
                 onChange={e => updateProvider(u.id, e.target.value)}
-                className={`text-xs font-medium px-2 py-1 rounded border cursor-pointer ${u.provider === 'evolink' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}
+                className={`text-xs font-medium px-2 py-1 rounded border cursor-pointer ${u.provider === 'evolink' ? 'bg-purple-50 text-purple-700 border-purple-200' : u.provider === 'auto' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}
               >
                 <option value="meitu">Meitu</option>
                 <option value="evolink">Evolink</option>
+                <option value="auto">Auto (Meitu→Evolink)</option>
               </select>
             </div>
             <div className="flex items-center gap-2 text-sm">

@@ -86,8 +86,8 @@ tenantRoutes.get('/keys', async (c) => {
 tenantRoutes.post('/keys', async (c) => {
   const user = c.get('user');
   const { name, expiresAt, provider } = await c.req.json();
-  if (provider != null && provider !== '' && !['meitu', 'evolink'].includes(provider)) {
-    return c.json({ error: 'Provider 必须为 meitu 或 evolink' }, 400);
+  if (provider != null && provider !== '' && !['meitu', 'evolink', 'auto'].includes(provider)) {
+    return c.json({ error: 'Provider 必须为 meitu / evolink / auto' }, 400);
   }
   const { v4: uuidv4 } = await import('uuid');
   const apiKey = `sk-${uuidv4().replace(/-/g, '')}`;
@@ -108,8 +108,8 @@ tenantRoutes.put('/keys/:id/provider', async (c) => {
   const keyId = parseInt(c.req.param('id'));
   const { provider } = await c.req.json();
   const next = provider == null || provider === '' ? null : provider;
-  if (next !== null && !['meitu', 'evolink'].includes(next)) {
-    return c.json({ error: 'Provider 必须为 meitu 或 evolink' }, 400);
+  if (next !== null && !['meitu', 'evolink', 'auto'].includes(next)) {
+    return c.json({ error: 'Provider 必须为 meitu / evolink / auto' }, 400);
   }
 
   const keyRecord = await db.select().from(schema.keys)

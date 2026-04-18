@@ -18,6 +18,16 @@ interface ProviderRow {
   rangeCost: string | null;
 }
 
+interface AutoFallbackStats {
+  autoTasks: number;
+  fallbackTriggered: number;
+  fallbackRate: number;
+  fallbackSucceeded: number;
+  fallbackFailed: number;
+  fallbackPending: number;
+  reasons: { reason: string; count: number }[];
+}
+
 const providerClass = (p: string) => {
   switch (p) {
     case 'ark': return 'bg-orange-100 text-orange-700 border-orange-200';
@@ -39,6 +49,7 @@ const formatDuration = (ms: number | null) => {
 
 export default function ProviderStatsPanel() {
   const [rows, setRows] = useState<ProviderRow[] | null>(null);
+  const [autoFallback, setAutoFallback] = useState<AutoFallbackStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,8 +63,12 @@ export default function ProviderStatsPanel() {
       const params: Record<string, string> = {};
       if (start) params.startDate = start;
       if (end) params.endDate = end;
-      const res = await api.get('/admin/stats/providers', { params });
-      setRows(res.data.providers || []);
+      const [providersRes, fallbackRes] = await Promise.all([
+        api.get('/admin/stats/providers', { params }),
+        api.get('/admin/stats/auto-fallback', { params }),
+      ]);
+      setRows(providersRes.data.providers || []);
+      setAutoFallback(fallbackRes.data || null);
     } catch (err: any) {
       setError(err?.response?.data?.error || '加载失败');
     } finally {
@@ -164,6 +179,56 @@ export default function ProviderStatsPanel() {
             <div className="px-3 py-2 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-sm">
               <span className="text-xs text-indigo-500">区间消耗</span>
               <div className="font-semibold text-base">¥{rangeCostAll.toFixed(4)} <span className="text-xs text-indigo-400">({rangeTasksAll} 任务)</span></div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Auto-fallback metrics — only shown when at least one auto-mode task exists */}
+      {autoFallback && autoFallback.autoTasks > 0 && (
+        <div className="mb-4 border border-amber-200 rounded-lg bg-amber-50/40 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold text-amber-800">Auto 模式 fallback</h3>
+            <span className="text-xs text-amber-600">{hasRange ? '区间内' : '全部'}</span>
+          </div>
+          <div className="flex flex-wrap gap-3 mb-2">
+            <div className="px-3 py-1.5 rounded bg-white border border-amber-200 text-amber-700 text-sm">
+              <span className="text-xs text-amber-500">Auto 任务</span>
+              <div className="font-semibold text-base">{autoFallback.autoTasks}</div>
+            </div>
+            <div className="px-3 py-1.5 rounded bg-white border border-amber-200 text-amber-700 text-sm">
+              <span className="text-xs text-amber-500">触发 fallback</span>
+              <div className="font-semibold text-base">{autoFallback.fallbackTriggered}</div>
+            </div>
+            <div className="px-3 py-1.5 rounded bg-white border border-amber-200 text-amber-700 text-sm">
+              <span className="text-xs text-amber-500">触发率</span>
+              <div className="font-semibold text-base">{(autoFallback.fallbackRate * 100).toFixed(1)}%</div>
+            </div>
+            <div className="px-3 py-1.5 rounded bg-white border border-green-200 text-green-700 text-sm">
+              <span className="text-xs text-green-500">Fallback 成功</span>
+              <div className="font-semibold text-base">{autoFallback.fallbackSucceeded}</div>
+            </div>
+            <div className="px-3 py-1.5 rounded bg-white border border-red-200 text-red-600 text-sm">
+              <span className="text-xs text-red-400">Fallback 失败</span>
+              <div className="font-semibold text-base">{autoFallback.fallbackFailed}</div>
+            </div>
+            {autoFallback.fallbackPending > 0 && (
+              <div className="px-3 py-1.5 rounded bg-white border border-yellow-200 text-yellow-700 text-sm">
+                <span className="text-xs text-yellow-500">Fallback 进行中</span>
+                <div className="font-semibold text-base">{autoFallback.fallbackPending}</div>
+              </div>
+            )}
+          </div>
+          {autoFallback.reasons.length > 0 && (
+            <div className="text-xs text-gray-600">
+              <span className="text-gray-500">Top 触发原因：</span>
+              <span className="inline-flex flex-wrap gap-1.5 ml-1">
+                {autoFallback.reasons.map(r => (
+                  <span key={r.reason} className="inline-block px-1.5 py-0.5 rounded bg-white border border-gray-200 font-mono">
+                    {r.reason} <span className="text-gray-400">×{r.count}</span>
+                  </span>
+                ))}
+              </span>
             </div>
           )}
         </div>

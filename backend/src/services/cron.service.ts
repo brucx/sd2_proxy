@@ -7,6 +7,7 @@ import { calculateCost } from '../utils/cost.util.js';
 import { getProvider } from '../providers/index.js';
 import { concurrencyCache, keyConcurrencyCache } from './concurrency.service.js';
 import { logger } from '../utils/logger.util.js';
+import { attemptModerationFallback, isFallbackEligible } from '../utils/autoFallback.util.js';
 
 const CRON_BATCH_SIZE = 10;
 
@@ -29,10 +30,34 @@ const processPendingTask = async (log: any) => {
     } catch { /* ignore */ }
 
     const provider = getProvider(log.provider || 'meitu');
-    const result = await provider.queryTask(upstreamId, userModel);
+    const parsedBody = (() => {
+      try { return log.requestBody ? JSON.parse(log.requestBody) : null; } catch { return null; }
+    })();
+    const result = await provider.queryTask(upstreamId, userModel, parsedBody);
 
     if (result.statusCode >= 200 && result.statusCode < 300) {
       const normalizedStatus = result.arkResponse.status;
+
+      // Auto-mode fallback before terminal write — same logic as the route
+      // handler. Without this, an idle (un-polled) auto task would be
+      // permanently marked failed by the cron, never reaching evolink.
+      if (normalizedStatus === 'failed') {
+        const failedErrorCode = result.arkResponse.error?.code;
+        if (isFallbackEligible(log, failedErrorCode)) {
+          const fallback = await attemptModerationFallback({
+            log,
+            failedErrorCode,
+            failedQueryRaw: result.upstreamRaw,
+            parsedRequestBody: parsedBody,
+            userModel,
+          });
+          if (fallback.triggered) {
+            logger.info(`[auto-fallback] Cron re-routed task ${log.taskId} meitu→evolink`);
+            return; // Next cron tick will pick up the new evolink task as 'pending'.
+          }
+        }
+      }
+
       if (['succeeded', 'failed', 'cancelled', 'expired'].includes(normalizedStatus)) {
         let cost = '0';
         if (normalizedStatus === 'succeeded') {

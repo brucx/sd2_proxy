@@ -28,6 +28,14 @@ export const config = {
         'doubao-seedance-2-0-260128': 'ep-20260307130721-bx7tv',
       } as Record<string, string>,
 
+  // -- Auto provider routing --
+  // When user/key provider='auto', requests start on Meitu and fall back to
+  // Evolink when Meitu rejects on content moderation. Match is substring,
+  // case-sensitive, against the upstream `error.code`. See docs/ark/get.md and
+  // production samples (e.g. InputImageSensitiveContentDetected.PolicyViolation,
+  // OutputVideoSensitiveContentDetected) — they all share this substring.
+  AUTO_FALLBACK_ERROR_CODE_PATTERN: process.env.AUTO_FALLBACK_ERROR_CODE_PATTERN || 'SensitiveContentDetected',
+
   // -- Evolink Provider --
   EVOLINK_API_KEY: process.env.EVOLINK_API_KEY || '',
   EVOLINK_URL: process.env.EVOLINK_URL || 'https://api.evolink.ai',

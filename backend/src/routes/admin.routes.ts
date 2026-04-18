@@ -144,6 +144,58 @@ adminRoutes.get('/stats/providers/export', async (c) => {
   }
 });
 
+// Admin: Auto-mode fallback metrics. Counts how many auto-mode tasks fell back
+// from Meitu to Evolink, broken down by reason and outcome — primary signal for
+// validating the AUTO_FALLBACK_ERROR_CODE_PATTERN configuration.
+adminRoutes.get('/stats/auto-fallback', async (c) => {
+  const startDate = c.req.query('startDate');
+  const endDate = c.req.query('endDate');
+
+  const conds = [eq(schema.usageLogs.autoMode, true)];
+  if (startDate) conds.push(gte(schema.usageLogs.createdAt, new Date(startDate)));
+  if (endDate) {
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+    conds.push(lte(schema.usageLogs.createdAt, end));
+  }
+  const where = and(...conds);
+
+  const [totals] = await db.select({
+    autoTasks: sql<number>`count(*)`,
+    fallbackTriggered: sql<number>`count(*) filter (where ${schema.usageLogs.fallbackFromProvider} is not null)`,
+    fallbackSucceeded: sql<number>`count(*) filter (where ${schema.usageLogs.fallbackFromProvider} is not null and ${schema.usageLogs.status} = 'succeeded')`,
+    fallbackFailed: sql<number>`count(*) filter (where ${schema.usageLogs.fallbackFromProvider} is not null and ${schema.usageLogs.status} = 'failed')`,
+    fallbackPending: sql<number>`count(*) filter (where ${schema.usageLogs.fallbackFromProvider} is not null and ${schema.usageLogs.status} = 'pending')`,
+  })
+    .from(schema.usageLogs)
+    .where(where);
+
+  // Top reasons. NULL filtered out by the WHERE clause on fallbackReason.
+  const reasonRows = await db.select({
+    reason: schema.usageLogs.fallbackReason,
+    count: sql<number>`count(*)`,
+  })
+    .from(schema.usageLogs)
+    .where(and(where, sql`${schema.usageLogs.fallbackReason} is not null`))
+    .groupBy(schema.usageLogs.fallbackReason)
+    .orderBy(desc(sql`count(*)`))
+    .limit(10);
+
+  const autoTasks = Number(totals?.autoTasks || 0);
+  const triggered = Number(totals?.fallbackTriggered || 0);
+
+  return c.json({
+    range: { startDate: startDate || null, endDate: endDate || null },
+    autoTasks,
+    fallbackTriggered: triggered,
+    fallbackRate: autoTasks > 0 ? triggered / autoTasks : 0,
+    fallbackSucceeded: Number(totals?.fallbackSucceeded || 0),
+    fallbackFailed: Number(totals?.fallbackFailed || 0),
+    fallbackPending: Number(totals?.fallbackPending || 0),
+    reasons: reasonRows.map(r => ({ reason: r.reason || '', count: Number(r.count || 0) })),
+  });
+});
+
 async function fetchProviderStats(startDate?: string, endDate?: string) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -260,8 +312,8 @@ adminRoutes.put('/users/:id/concurrency', async (c) => {
 adminRoutes.put('/users/:id/provider', async (c) => {
   const userId = parseInt(c.req.param('id'));
   const { provider } = await c.req.json();
-  if (!provider || !['meitu', 'evolink'].includes(provider)) {
-    return c.json({ error: 'Provider 必须为 meitu 或 evolink' }, 400);
+  if (!provider || !['meitu', 'evolink', 'auto'].includes(provider)) {
+    return c.json({ error: 'Provider 必须为 meitu / evolink / auto' }, 400);
   }
   const targetUser = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
   if (targetUser.length === 0) return c.json({ error: 'User not found' }, 404);
@@ -532,8 +584,8 @@ adminRoutes.get('/keys', async (c) => {
 adminRoutes.post('/keys', async (c) => {
   const { userId, name, expiresAt, provider } = await c.req.json();
   if (!userId || !name) return c.json({ error: 'userId and name are required' }, 400);
-  if (provider != null && provider !== '' && !['meitu', 'evolink'].includes(provider)) {
-    return c.json({ error: 'Provider 必须为 meitu 或 evolink' }, 400);
+  if (provider != null && provider !== '' && !['meitu', 'evolink', 'auto'].includes(provider)) {
+    return c.json({ error: 'Provider 必须为 meitu / evolink / auto' }, 400);
   }
 
   const targetUser = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
@@ -556,8 +608,8 @@ adminRoutes.put('/keys/:id/provider', async (c) => {
   const keyId = parseInt(c.req.param('id'));
   const { provider } = await c.req.json();
   const next = provider == null || provider === '' ? null : provider;
-  if (next !== null && !['meitu', 'evolink'].includes(next)) {
-    return c.json({ error: 'Provider 必须为 meitu 或 evolink' }, 400);
+  if (next !== null && !['meitu', 'evolink', 'auto'].includes(next)) {
+    return c.json({ error: 'Provider 必须为 meitu / evolink / auto' }, 400);
   }
 
   const keyRecord = await db.select().from(schema.keys).where(eq(schema.keys.id, keyId)).limit(1);
