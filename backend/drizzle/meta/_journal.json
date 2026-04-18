@@ -36,6 +36,13 @@
       "when": 1776502238875,
       "tag": "0004_rename_ark_to_meitu",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776504120000,
+      "tag": "0005_add_upstream_task_id",
+      "breakpoints": true
     }
   ]
 }

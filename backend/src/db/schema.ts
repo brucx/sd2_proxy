@@ -33,7 +33,8 @@ export const usageLogs = pgTable('usage_logs', {
   userId: integer('user_id').references(() => users.id).notNull(),
   keyId: integer('key_id').references(() => keys.id).notNull(),
   endpoint: varchar('endpoint', { length: 255 }).notNull(),
-  taskId: varchar('task_id', { length: 255 }),
+  taskId: varchar('task_id', { length: 255 }),                         // our own task id (cgt-YYYYMMDDHHMMSS-xxxxx)
+  upstreamTaskId: varchar('upstream_task_id', { length: 255 }),        // provider-issued id, used for upstream queries
   completionTokens: integer('completion_tokens').default(0),
   hasVideoInput: boolean('has_video_input').notNull().default(false),
   costYuan: text('cost_yuan').notNull().default('0'),
@@ -50,6 +51,7 @@ export const usageLogs = pgTable('usage_logs', {
   index('usage_logs_user_id_idx').on(table.userId),
   index('usage_logs_status_idx').on(table.status),
   index('usage_logs_task_id_idx').on(table.taskId),
+  index('usage_logs_upstream_task_id_idx').on(table.upstreamTaskId),
   index('usage_logs_created_at_idx').on(table.createdAt),
 ]);
 

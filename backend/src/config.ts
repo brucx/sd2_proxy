@@ -44,4 +44,31 @@ export const config = {
         'doubao-seedance-2-0': 'seedance-2.0',
         'doubao-seedance-2-0-260128': 'seedance-2.0',
       } as Record<string, string>,
+
+  // -- Ark (Volcengine) Provider --
+  ARK_API_KEY: process.env.ARK_API_KEY || '',
+  ARK_URL: process.env.ARK_URL || 'https://ark.cn-beijing.volces.com',
+  // Ark accepts model IDs directly; map from user-facing alias → upstream model/endpoint ID
+  ARK_MODEL_MAPPING: process.env.ARK_MODEL_MAPPING
+    ? JSON.parse(process.env.ARK_MODEL_MAPPING)
+    : {
+        'doubao-seedance-2.0-fast': 'doubao-seedance-2-0-fast-260128',
+        'doubao-seedance-2.0-fast-260128': 'doubao-seedance-2-0-fast-260128',
+        'doubao-seedance-2-0': 'doubao-seedance-2-0-260128',
+        'doubao-seedance-2-0-260128': 'doubao-seedance-2-0-260128',
+      } as Record<string, string>,
+  // Ark pricing: CNY per 1,000,000 tokens — see docs/ark/pricing.md
+  // Keyed by "<model>:<hasVideo>" where model is normalized to 2.0 vs 2.0-fast.
+  ARK_PRICE_PER_MILLION: {
+    '2.0:false:480p': 46,
+    '2.0:false:720p': 46,
+    '2.0:false:1080p': 51,
+    '2.0:true:480p': 28,
+    '2.0:true:720p': 28,
+    '2.0:true:1080p': 31,
+    '2.0-fast:false:480p': 37,
+    '2.0-fast:false:720p': 37,
+    '2.0-fast:true:480p': 22,
+    '2.0-fast:true:720p': 22,
+  } as Record<string, number>,
 };

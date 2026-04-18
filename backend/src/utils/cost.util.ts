@@ -16,6 +16,22 @@ export function calculateMeituCost(completionTokens: number, hasVideo: boolean):
   return (completionTokens * pricePerToken).toFixed(6);
 }
 
+// -- Ark billing: per completion_tokens, varies by model variant, hasVideo, quality --
+// See docs/ark/pricing.md.
+export function calculateArkCost(
+  completionTokens: number,
+  hasVideo: boolean,
+  quality: string,
+  model: string,
+): string {
+  const variant = /fast/i.test(model) ? '2.0-fast' : '2.0';
+  const q = ['480p', '720p', '1080p'].includes(quality) ? quality : '720p';
+  const key = `${variant}:${hasVideo}:${q}`;
+  const table = config.ARK_PRICE_PER_MILLION;
+  const rate = table[key] ?? table[`${variant}:${hasVideo}:720p`] ?? (hasVideo ? 28 : 46);
+  return (completionTokens * rate! / 1_000_000).toFixed(6);
+}
+
 // -- Evolink billing: prefer credits from upstream, fallback to per-second table --
 const EVOLINK_PRICE_PER_SECOND_USD: Record<string, number> = {
   '480p': 0.092,
@@ -41,11 +57,12 @@ export function calculateEvolinkCost(duration: number, quality: string): string 
 export function calculateCost(
   provider: string,
   params: {
-    completionTokens?: number;
-    hasVideo?: boolean;
-    duration?: number;
-    quality?: string;
-    credits?: number;
+    completionTokens?: number | undefined;
+    hasVideo?: boolean | undefined;
+    duration?: number | undefined;
+    quality?: string | undefined;
+    credits?: number | undefined;
+    model?: string | undefined;
   }
 ): string {
   if (provider === 'evolink') {
@@ -55,6 +72,14 @@ export function calculateCost(
       return creditsToCny(params.credits);
     }
     return calculateEvolinkCost(params.duration || 5, params.quality || '720p');
+  }
+  if (provider === 'ark') {
+    return calculateArkCost(
+      params.completionTokens || 0,
+      params.hasVideo || false,
+      params.quality || '720p',
+      params.model || '',
+    );
   }
   return calculateMeituCost(params.completionTokens || 0, params.hasVideo || false);
 }

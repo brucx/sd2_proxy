@@ -14,24 +14,35 @@ let cronTask: cron.ScheduledTask | null = null;
 
 const processPendingTask = async (log: any) => {
   try {
-    if (!log.taskId) return;
+    const upstreamId = log.upstreamTaskId || log.taskId;
+    if (!upstreamId) return;
+
+    // Recover the user-facing model name from the original request body so the
+    // translated response carries the caller's model, not the provider's
+    // internal endpoint id.
+    let userModel: string | undefined;
+    try {
+      if (log.requestBody) {
+        const parsed = JSON.parse(log.requestBody);
+        if (parsed?.model) userModel = parsed.model;
+      }
+    } catch { /* ignore */ }
 
     const provider = getProvider(log.provider || 'meitu');
-    const result = await provider.queryTask(log.taskId);
+    const result = await provider.queryTask(upstreamId, userModel);
 
     if (result.statusCode >= 200 && result.statusCode < 300) {
-      const normalizedStatus = result.rawResponse.status;
+      const normalizedStatus = result.arkResponse.status;
       if (['succeeded', 'failed', 'cancelled', 'expired'].includes(normalizedStatus)) {
-        // Calculate cost using provider-appropriate method
         let cost = '0';
         if (normalizedStatus === 'succeeded') {
-          // For Evolink, prefer persisted credits_reserved (captured at create time).
           const storedCredits = log.creditsReserved ? parseFloat(log.creditsReserved) : undefined;
           cost = calculateCost(log.provider || 'meitu', {
             completionTokens: result.completionTokens || 0,
             hasVideo: log.hasVideoInput,
             duration: result.duration || log.videoDuration || 5,
             quality: log.videoQuality || '720p',
+            model: userModel,
             ...(typeof storedCredits === 'number' ? { credits: storedCredits } : {}),
           });
         }
@@ -43,10 +54,10 @@ const processPendingTask = async (log: any) => {
             .set({
               status: normalizedStatus,
               completionTokens: result.completionTokens || 0,
-              // Update Evolink video duration if provided by upstream
               ...(result.duration ? { videoDuration: result.duration } : {}),
               costYuan: cost,
-              resultData: JSON.stringify(result.rawResponse),
+              // Rewrite id to our own task id before persisting the snapshot.
+              resultData: JSON.stringify({ ...result.arkResponse, id: log.taskId || result.arkResponse.id }),
               updatedAt: new Date()
             })
             .where(and(
@@ -118,14 +129,14 @@ export function startCronJobs() {
       for (const log of stillPending) {
         const age = now - new Date(log.createdAt).getTime();
         if (age > config.PENDING_TIMEOUT_MS) {
-          // Final check before expiring — use appropriate provider
           let recovered = false;
           try {
-            if (log.taskId) {
+            const upstreamId = log.upstreamTaskId || log.taskId;
+            if (upstreamId) {
               const provider = getProvider(log.provider || 'meitu');
-              const finalResult = await provider.queryTask(log.taskId);
+              const finalResult = await provider.queryTask(upstreamId);
               if (finalResult.statusCode >= 200 && finalResult.statusCode < 300) {
-                const finalStatus = finalResult.rawResponse.status;
+                const finalStatus = finalResult.arkResponse.status;
                 if (['succeeded', 'failed', 'cancelled'].includes(finalStatus)) {
                   await processPendingTask(log);
                   recovered = true;
