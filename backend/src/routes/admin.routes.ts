@@ -71,6 +71,50 @@ adminRoutes.get('/stats', async (c) => {
   });
 });
 
+// Admin: Per-provider consumption statistics.
+// Aggregates usage_logs by provider, returns lifetime + today totals alongside
+// success/failure mix and average upstream processing time.
+adminRoutes.get('/stats/providers', async (c) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayIso = today.toISOString();
+
+  const rows = await db.select({
+    provider: schema.usageLogs.provider,
+    totalTasks: sql<number>`count(*)`,
+    succeeded: sql<number>`count(*) filter (where ${schema.usageLogs.status} = 'succeeded')`,
+    failed: sql<number>`count(*) filter (where ${schema.usageLogs.status} = 'failed')`,
+    pending: sql<number>`count(*) filter (where ${schema.usageLogs.status} = 'pending')`,
+    cancelled: sql<number>`count(*) filter (where ${schema.usageLogs.status} = 'cancelled')`,
+    expired: sql<number>`count(*) filter (where ${schema.usageLogs.status} = 'expired')`,
+    totalTokens: sql<number>`coalesce(sum(${schema.usageLogs.completionTokens}), 0)`,
+    totalCost: sql<string>`coalesce(sum(${schema.usageLogs.costYuan}::numeric), 0)`,
+    avgDurationMs: sql<number | null>`avg(${schema.usageLogs.taskDurationMs}) filter (where ${schema.usageLogs.status} = 'succeeded')`,
+    todayTasks: sql<number>`count(*) filter (where ${schema.usageLogs.createdAt} >= ${todayIso}::timestamp)`,
+    todayCost: sql<string>`coalesce(sum(${schema.usageLogs.costYuan}::numeric) filter (where ${schema.usageLogs.createdAt} >= ${todayIso}::timestamp), 0)`,
+  })
+    .from(schema.usageLogs)
+    .groupBy(schema.usageLogs.provider)
+    .orderBy(desc(sql`coalesce(sum(${schema.usageLogs.costYuan}::numeric), 0)`));
+
+  return c.json({
+    providers: rows.map(r => ({
+      provider: r.provider,
+      totalTasks: Number(r.totalTasks || 0),
+      succeeded: Number(r.succeeded || 0),
+      failed: Number(r.failed || 0),
+      pending: Number(r.pending || 0),
+      cancelled: Number(r.cancelled || 0),
+      expired: Number(r.expired || 0),
+      totalTokens: Number(r.totalTokens || 0),
+      totalCost: parseFloat(String(r.totalCost || '0')).toFixed(4),
+      avgDurationMs: r.avgDurationMs != null ? Math.round(Number(r.avgDurationMs)) : null,
+      todayTasks: Number(r.todayTasks || 0),
+      todayCost: parseFloat(String(r.todayCost || '0')).toFixed(4),
+    })),
+  });
+});
+
 // Admin: Reset user password
 adminRoutes.put('/users/:id/password', async (c) => {
   const userId = parseInt(c.req.param('id'));
