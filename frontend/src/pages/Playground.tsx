@@ -384,13 +384,14 @@ function Playground() {
           </div>
           <div>
             <label className="block text-sm font-medium mb-1 text-gray-700">🤖 Model</label>
-            <input
-              type="text"
+            <select
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-md font-mono text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all"
-              placeholder="doubao-seedance-2-0-260128"
-            />
+              className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all bg-white"
+            >
+              <option value="doubao-seedance-2-0-260128">doubao-seedance-2-0-260128 (Standard)</option>
+              <option value="doubao-seedance-2-0-fast-260128">doubao-seedance-2-0-fast-260128 (Fast)</option>
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1 text-gray-700">📐 Ratio</label>
