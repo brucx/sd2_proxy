@@ -90,6 +90,7 @@ export const createHandler = async (c: any) => {
         provider,
         ...evolinkFields,
         requestBody: originalBody.substring(0, 8192),
+        upstreamCreateRaw: result.upstreamRaw !== undefined ? JSON.stringify(result.upstreamRaw) : null,
       });
     } else {
        cc.active--;
@@ -246,6 +247,9 @@ export const getResultHandler = async (c: any) => {
               ...(result.duration ? { videoDuration: result.duration } : {}),
               costYuan: cost,
               resultData: responseBody,
+              ...(result.upstreamRaw !== undefined
+                ? { upstreamQueryRaw: JSON.stringify(result.upstreamRaw) }
+                : {}),
               ...timingFields,
               updatedAt: new Date(),
             })

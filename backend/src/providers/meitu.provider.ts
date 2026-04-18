@@ -49,6 +49,7 @@ class MeituProvider implements UpstreamProvider {
       upstreamTaskId,
       arkResponse,
       statusCode: upstreamRes.status,
+      upstreamRaw: data,
     };
   }
 
@@ -73,6 +74,7 @@ class MeituProvider implements UpstreamProvider {
       arkResponse,
       statusCode: upstreamRes.status,
       completionTokens: data.usage?.completion_tokens || 0,
+      upstreamRaw: data,
     };
   }
 

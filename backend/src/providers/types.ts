@@ -8,6 +8,7 @@ export interface CreateTaskResult {
   arkResponse: ArkTaskResponse; // Ark-shape body returned to the client (id is still the upstream one here; the route layer rewrites it to our cgt-* id)
   statusCode: number;
   credits?: number;             // Evolink: credits_reserved from create response (authoritative billing value)
+  upstreamRaw?: unknown;        // Raw upstream response body (pre-normalization) — persisted for audit
 }
 
 export interface QueryTaskResult {
@@ -17,6 +18,7 @@ export interface QueryTaskResult {
   completionTokens?: number;
   duration?: number;            // seconds of output video (when upstream exposes it)
   quality?: string;
+  upstreamRaw?: unknown;        // Raw upstream response body (pre-normalization) — persisted for audit
 }
 
 export interface CancelTaskResult {

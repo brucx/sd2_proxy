@@ -46,7 +46,7 @@ class ArkProvider implements UpstreamProvider {
       { id: data.id, model: userModel },
     );
 
-    return { upstreamTaskId: data.id, arkResponse, statusCode: upstreamRes.status };
+    return { upstreamTaskId: data.id, arkResponse, statusCode: upstreamRes.status, upstreamRaw: data };
   }
 
   async queryTask(upstreamTaskId: string, userModel?: string): Promise<QueryTaskResult> {
@@ -67,6 +67,7 @@ class ArkProvider implements UpstreamProvider {
       statusCode: upstreamRes.status,
       completionTokens: data.usage?.completion_tokens || 0,
       quality: data.resolution,
+      upstreamRaw: data,
     };
   }
 

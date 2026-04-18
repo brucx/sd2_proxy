@@ -153,6 +153,7 @@ class EvolinkProvider implements UpstreamProvider {
       arkResponse,
       statusCode: upstreamRes.status,
       ...(typeof reserved === 'number' ? { credits: reserved } : {}),
+      upstreamRaw: data,
     };
   }
 
@@ -172,6 +173,7 @@ class EvolinkProvider implements UpstreamProvider {
       status: toLifecycleStatus(normalizeStatus(data.status)),
       arkResponse,
       statusCode: upstreamRes.status,
+      upstreamRaw: data,
     };
   }
 

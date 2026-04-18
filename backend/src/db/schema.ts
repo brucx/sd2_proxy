@@ -43,7 +43,9 @@ export const usageLogs = pgTable('usage_logs', {
   videoDuration: integer('video_duration'),  // Evolink: output video duration in seconds
   videoQuality: varchar('video_quality', { length: 10 }), // Evolink: '480p' | '720p' | '1080p'
   creditsReserved: numeric('credits_reserved', { precision: 20, scale: 4 }), // Evolink: credits_reserved from create response — authoritative for billing
-  resultData: text('result_data'), // 任务完成时的上游完整响应 JSON
+  resultData: text('result_data'), // 任务终态时对外返回的 Ark-shape 响应 JSON（id 已替换为我方 task_id）
+  upstreamCreateRaw: text('upstream_create_raw'), // 上游 provider /create 的原始响应（审计用）
+  upstreamQueryRaw: text('upstream_query_raw'),   // 上游 provider 终态查询的原始响应（审计用）
   requestBody: text('request_body'), // 原始请求体（截断至 8K）
   upstreamStartedAt: timestamp('upstream_started_at'),   // 上游 created_at（任务提交时刻）
   upstreamFinishedAt: timestamp('upstream_finished_at'), // 上游 updated_at（终态时刻）
