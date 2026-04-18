@@ -84,6 +84,10 @@ function preNormalizeEvolink(data: any): any {
   if (data.task_info?.video_duration != null && out.duration == null) {
     out.duration = data.task_info.video_duration;
   }
+  // Evolink uses `created` (unix seconds); align with Ark's `created_at`.
+  if (out.created_at == null && typeof data.created === 'number') {
+    out.created_at = data.created;
+  }
   return out;
 }
 

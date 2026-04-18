@@ -49,6 +49,13 @@ const processPendingTask = async (log: any) => {
         
         // Optimistic lock: only update if status is 'pending' or 'expired' to allow recovery
         let statusUpdated = false;
+        const startedSec = typeof result.arkResponse.created_at === 'number' ? result.arkResponse.created_at : undefined;
+        const finishedSec = typeof result.arkResponse.updated_at === 'number' ? result.arkResponse.updated_at : undefined;
+        const timingFields = {
+          ...(startedSec ? { upstreamStartedAt: new Date(startedSec * 1000) } : {}),
+          ...(finishedSec ? { upstreamFinishedAt: new Date(finishedSec * 1000) } : {}),
+          ...(startedSec && finishedSec ? { taskDurationMs: (finishedSec - startedSec) * 1000 } : {}),
+        };
         await db.transaction(async (tx) => {
           const updateResult = await tx.update(schema.usageLogs)
             .set({
@@ -58,6 +65,7 @@ const processPendingTask = async (log: any) => {
               costYuan: cost,
               // Rewrite id to our own task id before persisting the snapshot.
               resultData: JSON.stringify({ ...result.arkResponse, id: log.taskId || result.arkResponse.id }),
+              ...timingFields,
               updatedAt: new Date()
             })
             .where(and(

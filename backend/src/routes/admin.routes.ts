@@ -253,6 +253,8 @@ adminRoutes.get('/usage', async (c) => {
         hasVideoInput: schema.usageLogs.hasVideoInput,
         costYuan: schema.usageLogs.costYuan,
         status: schema.usageLogs.status,
+        provider: schema.usageLogs.provider,
+        taskDurationMs: schema.usageLogs.taskDurationMs,
         createdAt: schema.usageLogs.createdAt,
       })
       .from(schema.usageLogs)
@@ -304,6 +306,8 @@ adminRoutes.get('/usage/export', async (c) => {
         hasVideoInput: schema.usageLogs.hasVideoInput,
         costYuan: schema.usageLogs.costYuan,
         status: schema.usageLogs.status,
+        provider: schema.usageLogs.provider,
+        taskDurationMs: schema.usageLogs.taskDurationMs,
         createdAt: schema.usageLogs.createdAt,
       })
       .from(schema.usageLogs)
@@ -313,11 +317,12 @@ adminRoutes.get('/usage/export', async (c) => {
 
     const logs = where ? await (query as any).where(where) : await query;
 
-    const header = 'ID,Username,KeyID,Endpoint,TaskID,Tokens,InputType,UnitPrice,Cost(CNY),Status,CreatedAt';
+    const header = 'ID,Username,KeyID,Endpoint,TaskID,Tokens,InputType,UnitPrice,Cost(CNY),Status,Provider,DurationMs,CreatedAt';
     const rows = logs.map((u: any) =>
       [u.id, u.username, u.keyId, u.endpoint, u.taskId || '', u.completionTokens || 0,
        u.hasVideoInput ? '含视频' : '纯文本', u.hasVideoInput ? 28 : 46,
-       u.costYuan, u.status, new Date(u.createdAt).toISOString()].join(',')
+       u.costYuan, u.status, u.provider || '', u.taskDurationMs ?? '',
+       new Date(u.createdAt).toISOString()].join(',')
     );
     const csv = '\uFEFF' + [header, ...rows].join('\n');
 

@@ -230,6 +230,14 @@ export const getResultHandler = async (c: any) => {
         // stored enum (the DB already used 'expired' before; 'cancelled' is new
         // but stored as a plain varchar so no migration needed).
         const persistStatus = normalizedStatus;
+        // Upstream-authoritative timing (seconds → Date).
+        const startedSec = typeof publicResponse.created_at === 'number' ? publicResponse.created_at : undefined;
+        const finishedSec = typeof publicResponse.updated_at === 'number' ? publicResponse.updated_at : undefined;
+        const timingFields = {
+          ...(startedSec ? { upstreamStartedAt: new Date(startedSec * 1000) } : {}),
+          ...(finishedSec ? { upstreamFinishedAt: new Date(finishedSec * 1000) } : {}),
+          ...(startedSec && finishedSec ? { taskDurationMs: (finishedSec - startedSec) * 1000 } : {}),
+        };
         await db.transaction(async (tx) => {
           const updateResult = await tx.update(schema.usageLogs)
             .set({
@@ -238,6 +246,7 @@ export const getResultHandler = async (c: any) => {
               ...(result.duration ? { videoDuration: result.duration } : {}),
               costYuan: cost,
               resultData: responseBody,
+              ...timingFields,
               updatedAt: new Date(),
             })
             .where(and(

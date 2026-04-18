@@ -45,6 +45,9 @@ export const usageLogs = pgTable('usage_logs', {
   creditsReserved: numeric('credits_reserved', { precision: 20, scale: 4 }), // Evolink: credits_reserved from create response — authoritative for billing
   resultData: text('result_data'), // 任务完成时的上游完整响应 JSON
   requestBody: text('request_body'), // 原始请求体（截断至 8K）
+  upstreamStartedAt: timestamp('upstream_started_at'),   // 上游 created_at（任务提交时刻）
+  upstreamFinishedAt: timestamp('upstream_finished_at'), // 上游 updated_at（终态时刻）
+  taskDurationMs: integer('task_duration_ms'),           // upstream_finished_at - upstream_started_at
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => [

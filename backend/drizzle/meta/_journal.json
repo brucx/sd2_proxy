@@ -43,6 +43,13 @@
       "when": 1776504120000,
       "tag": "0005_add_upstream_task_id",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776512400000,
+      "tag": "0006_add_task_duration",
+      "breakpoints": true
     }
   ]
 }

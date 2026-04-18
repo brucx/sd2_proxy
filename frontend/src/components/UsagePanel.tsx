@@ -84,6 +84,25 @@ export default function UsagePanel({ role, users, keys }: Props) {
 
   const isAdmin = role === 'admin';
 
+  const formatDuration = (ms: number | null | undefined) => {
+    if (ms == null) return '-';
+    if (ms < 1000) return `${ms}ms`;
+    const s = ms / 1000;
+    if (s < 60) return `${s.toFixed(1)}s`;
+    const m = Math.floor(s / 60);
+    const rem = (s - m * 60).toFixed(0);
+    return `${m}m${rem}s`;
+  };
+
+  const providerClass = (p: string) => {
+    switch (p) {
+      case 'ark': return 'bg-orange-100 text-orange-700';
+      case 'evolink': return 'bg-purple-100 text-purple-700';
+      case 'meitu': return 'bg-blue-100 text-blue-700';
+      default: return 'bg-gray-100 text-gray-600';
+    }
+  };
+
   return (
     <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
       <h2 className="text-xl font-bold mb-4">{isAdmin ? 'Global Usage Statistics' : 'Usage Statistics'}</h2>
@@ -151,10 +170,12 @@ export default function UsagePanel({ role, users, keys }: Props) {
               {isAdmin && <th className="p-2">用户</th>}
               <th className="p-2">API Key</th>
               <th className="p-2">Task ID</th>
+              <th className="p-2">Provider</th>
               <th className="p-2">Tokens</th>
               <th className="p-2">输入类型</th>
               <th className="p-2">单价(元/百万)</th>
               <th className="p-2">费用(元)</th>
+              <th className="p-2">处理时长</th>
               <th className="p-2">Status</th>
               <th className="p-2">时间</th>
             </tr>
@@ -167,6 +188,11 @@ export default function UsagePanel({ role, users, keys }: Props) {
                   {isAdmin && <td className="p-2">{u.username}</td>}
                   <td className="p-2">{u.keyName || '-'}</td>
                   <td className="p-2 font-mono text-xs">{u.taskId}</td>
+                  <td className="p-2">
+                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${providerClass(u.provider)}`}>
+                      {u.provider || '-'}
+                    </span>
+                  </td>
                   <td className="p-2">{u.completionTokens}</td>
                   <td className="p-2">
                     <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${u.hasVideoInput ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
@@ -175,6 +201,7 @@ export default function UsagePanel({ role, users, keys }: Props) {
                   </td>
                   <td className="p-2">{u.hasVideoInput ? '28' : '46'}</td>
                   <td className="p-2 font-semibold text-orange-600">¥{parseFloat(u.costYuan || '0').toFixed(4)}</td>
+                  <td className="p-2 text-gray-600 whitespace-nowrap">{formatDuration(u.taskDurationMs)}</td>
                   <td className="p-2">
                     <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${u.status === 'succeeded' ? 'bg-green-100 text-green-700' : u.status === 'failed' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-700'}`}>{u.status}</span>
                   </td>
@@ -182,7 +209,7 @@ export default function UsagePanel({ role, users, keys }: Props) {
                 </tr>
                 {expandedUsageId === u.id && (
                   <tr key={`${u.id}-detail`} className="border-b bg-gray-50">
-                    <td colSpan={isAdmin ? 10 : 9} className="p-4">
+                    <td colSpan={isAdmin ? 12 : 11} className="p-4">
                       {usageResultLoading === u.id ? (
                         <p className="text-sm text-gray-500">加载中...</p>
                       ) : usageResultCache[u.id] ? (
@@ -225,6 +252,10 @@ export default function UsagePanel({ role, users, keys }: Props) {
               <div className="flex justify-between items-center text-sm">
                 <span className="text-gray-500 text-xs">{new Date(u.createdAt).toLocaleString()}</span>
                 <span className="font-semibold text-green-600">Tokens: {u.completionTokens}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs text-gray-600">
+                <span className={`inline-block px-2 py-0.5 rounded font-medium ${providerClass(u.provider)}`}>{u.provider || '-'}</span>
+                <span>处理时长：{formatDuration(u.taskDurationMs)}</span>
               </div>
               <div className="flex justify-between items-center text-sm pt-1 border-t border-gray-200">
                 <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${u.hasVideoInput ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
