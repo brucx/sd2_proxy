@@ -413,3 +413,70 @@ adminRoutes.put('/keys/:id/toggle', async (c) => {
   await db.update(schema.keys).set({ enabled: newEnabled }).where(eq(schema.keys.id, keyId));
   return c.json({ success: true, enabled: newEnabled });
 });
+
+// ── Asset Management (admin panel) ──────────────────────────────
+
+import { config } from '../config.js';
+
+const assetAdminProxy = async (upstreamPath: string, body: any) => {
+  return fetch(`${config.UPSTREAM_URL}${upstreamPath}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${config.ARK_API_KEY}`
+    },
+    body: JSON.stringify(body)
+  });
+};
+
+// Admin: Create Asset (submit for review)
+adminRoutes.post('/assets/create', async (c) => {
+  const body = await c.req.json();
+  try {
+    const res = await assetAdminProxy('/api/v1/open/CreateAsset', body);
+    const data = await res.json();
+    return c.json(data, res.status as any);
+  } catch (error) {
+    console.error('Admin CreateAsset error:', error);
+    return c.json({ error: 'Internal Server Error' }, 500);
+  }
+});
+
+// Admin: Get Asset status
+adminRoutes.post('/assets/get', async (c) => {
+  const body = await c.req.json();
+  try {
+    const res = await assetAdminProxy('/api/v1/open/GetAsset', body);
+    const data = await res.json();
+    return c.json(data, res.status as any);
+  } catch (error) {
+    console.error('Admin GetAsset error:', error);
+    return c.json({ error: 'Internal Server Error' }, 500);
+  }
+});
+
+// Admin: List uploaded assets
+adminRoutes.post('/assets/list', async (c) => {
+  const body = await c.req.json();
+  try {
+    const res = await assetAdminProxy('/api/v1/open/ListAssets', body);
+    const data = await res.json();
+    return c.json(data, res.status as any);
+  } catch (error) {
+    console.error('Admin ListAssets error:', error);
+    return c.json({ error: 'Internal Server Error' }, 500);
+  }
+});
+
+// Admin: List public media asset groups
+adminRoutes.post('/assets/public', async (c) => {
+  const body = await c.req.json();
+  try {
+    const res = await assetAdminProxy('/api/v1/open/ListMediaAssetGroup', body);
+    const data = await res.json();
+    return c.json(data, res.status as any);
+  } catch (error) {
+    console.error('Admin ListMediaAssetGroup error:', error);
+    return c.json({ error: 'Internal Server Error' }, 500);
+  }
+});

@@ -5,6 +5,7 @@
 ## 功能特性 (Features)
 
 *   **API 接口转发**: 提供 `/api/v3/contents/generations/tasks` 接口（及向下兼容原有 `/api/v1/doubao/*` 路由）。
+*   **素材管理 API**: 提供 `/api/v1/open/*` 接口，支持真人素材的创建、查询和浏览公共素材库。
 *   **多租户架构**: 支持 Admin（管理员）和 Tenant（租户）两种角色。管理员可以创建租户，租户可以管理自己的多个子 API Key。
 *   **安全认证**: 租户在调用 API 时通过 `Authorization: Bearer <子 Key>` 进行鉴权，系统会在后端将其替换为统一的真实主 Key。
 *   **内存级限流 (Rate Limiting)**: 每个子 Key 默认限制每分钟最多 60 次请求（60 RPM），防止滥用。
@@ -15,7 +16,8 @@
 *   **统计面板 (Dashboard)**:
     *   Admin 面板：查看全局的租户用量统计和管理所有用户。
     *   Tenant 面板：生成新的 API Key 并查看当前 Key 的使用详情和消耗 Tokens 数。
-*   **API Playground**: 租户可以直接在界面上填入自己的子 Key 和 Prompt 来测试生成视频任务并轮询状态。
+*   **API Playground**: 租户可以直接在界面上填入自己的子 Key 和 Prompt 来测试生成视频任务并轮询状态。支持 480p/720p/1080p 分辨率、[4,15]秒或-1智能时长、联网搜索等参数。
+*   **素材管理面板**: 管理员可在 Dashboard 中管理真人素材（AIGC），包括提交新素材、查询素材状态、浏览公共虚拟人像库。
 
 ## 技术栈 (Tech Stack)
 
@@ -135,3 +137,27 @@ curl -X POST http://<YOUR_DOMAIN>:3000/api/v3/contents/generations/tasks \
 curl -X GET http://<YOUR_DOMAIN>:3000/api/v3/contents/generations/tasks/<创建任务返回的ID> \
 -H "Authorization: Bearer <你的子_API_KEY>"
 ```
+
+> ⚠️ 同一任务ID查询间隔需不少于 3 秒，否则会返回 429 错误。
+
+**3. 素材管理 API (`/api/v1/open/*`)**
+
+```bash
+# 创建素材
+curl -X POST http://<YOUR_DOMAIN>:3000/api/v1/open/CreateAsset \
+-H "Content-Type: application/json" \
+-H "Authorization: Bearer <你的子_API_KEY>" \
+-d '{
+  "URL": "https://example.com/image.jpg",
+  "AssetType": "Image",
+  "Name": "测试素材"
+}'
+
+# 查询素材状态
+curl -X POST http://<YOUR_DOMAIN>:3000/api/v1/open/GetAsset \
+-H "Content-Type: application/json" \
+-H "Authorization: Bearer <你的子_API_KEY>" \
+-d '{"Id": "<素材ID>"}'
+```
+
+素材创建后会经过预处理（状态从 `Processing` 变为 `Active`），之后可通过 `asset://<ASSET_ID>` 格式在视频生成中引用。

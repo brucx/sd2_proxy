@@ -307,9 +307,9 @@ function Playground() {
                 </thead>
                 <tbody>
                   <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">generate_audio</td><td className="px-2 py-1.5 border border-gray-200">boolean</td><td className="px-2 py-1.5 border border-gray-200">true</td><td className="px-2 py-1.5 border border-gray-200">控制视频是否包含同步声音（人声/音效/BGM）</td></tr>
-                  <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">resolution</td><td className="px-2 py-1.5 border border-gray-200">string</td><td className="px-2 py-1.5 border border-gray-200">720p</td><td className="px-2 py-1.5 border border-gray-200">视频分辨率，支持 480p / 720p</td></tr>
+                  <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">resolution</td><td className="px-2 py-1.5 border border-gray-200">string</td><td className="px-2 py-1.5 border border-gray-200">720p</td><td className="px-2 py-1.5 border border-gray-200">视频分辨率，支持 480p / 720p / 1080p（1080p 仅标准模型支持）</td></tr>
                   <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">ratio</td><td className="px-2 py-1.5 border border-gray-200">string</td><td className="px-2 py-1.5 border border-gray-200">adaptive</td><td className="px-2 py-1.5 border border-gray-200">宽高比：16:9, 4:3, 1:1, 3:4, 9:16, 21:9, adaptive</td></tr>
-                  <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">duration</td><td className="px-2 py-1.5 border border-gray-200">integer</td><td className="px-2 py-1.5 border border-gray-200">5</td><td className="px-2 py-1.5 border border-gray-200">视频时长 [5,15] 秒</td></tr>
+                  <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">duration</td><td className="px-2 py-1.5 border border-gray-200">integer</td><td className="px-2 py-1.5 border border-gray-200">5</td><td className="px-2 py-1.5 border border-gray-200">视频时长 [4,15] 秒，或 -1（智能时长，由模型自主选择）</td></tr>
                   <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">watermark</td><td className="px-2 py-1.5 border border-gray-200">boolean</td><td className="px-2 py-1.5 border border-gray-200">-</td><td className="px-2 py-1.5 border border-gray-200">是否添加水印</td></tr>
                   <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">tools</td><td className="px-2 py-1.5 border border-gray-200">object[]</td><td className="px-2 py-1.5 border border-gray-200">-</td><td className="px-2 py-1.5 border border-gray-200">web_search 联网搜索工具，提升时效性</td></tr>
                 </tbody>
@@ -319,23 +319,26 @@ function Playground() {
 
           <div>
             <h4 className="font-semibold text-gray-800 mb-1">📐 宽高比对应像素值</h4>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-xs font-medium text-gray-600 mb-1">720p</p>
-                <div className="text-xs text-gray-500 grid grid-cols-2 gap-x-3 gap-y-0.5">
-                  <span>16:9 → 1280×720</span><span>4:3 → 1112×834</span>
-                  <span>1:1 → 960×960</span><span>3:4 → 834×1112</span>
-                  <span>9:16 → 720×1280</span><span>21:9 → 1470×630</span>
-                </div>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-600 mb-1">480p</p>
-                <div className="text-xs text-gray-500 grid grid-cols-2 gap-x-3 gap-y-0.5">
-                  <span>16:9 → 864×496</span><span>4:3 → 752×560</span>
-                  <span>1:1 → 640×640</span><span>3:4 → 560×752</span>
-                  <span>9:16 → 496×864</span><span>21:9 → 992×432</span>
-                </div>
-              </div>
+            <div className="overflow-x-auto">
+              <table className="text-xs w-full border-collapse min-w-[420px]">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="text-left px-2 py-1.5 border border-gray-200 font-semibold">宽高比</th>
+                    <th className="text-left px-2 py-1.5 border border-gray-200 font-semibold">480p</th>
+                    <th className="text-left px-2 py-1.5 border border-gray-200 font-semibold">720p</th>
+                    <th className="text-left px-2 py-1.5 border border-gray-200 font-semibold">1080p</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td className="px-2 py-1 border border-gray-200">16:9</td><td className="px-2 py-1 border border-gray-200">864×496</td><td className="px-2 py-1 border border-gray-200">1280×720</td><td className="px-2 py-1 border border-gray-200">1920×1080</td></tr>
+                  <tr><td className="px-2 py-1 border border-gray-200">4:3</td><td className="px-2 py-1 border border-gray-200">752×560</td><td className="px-2 py-1 border border-gray-200">1112×834</td><td className="px-2 py-1 border border-gray-200">1664×1248</td></tr>
+                  <tr><td className="px-2 py-1 border border-gray-200">1:1</td><td className="px-2 py-1 border border-gray-200">640×640</td><td className="px-2 py-1 border border-gray-200">960×960</td><td className="px-2 py-1 border border-gray-200">1440×1440</td></tr>
+                  <tr><td className="px-2 py-1 border border-gray-200">3:4</td><td className="px-2 py-1 border border-gray-200">560×752</td><td className="px-2 py-1 border border-gray-200">834×1112</td><td className="px-2 py-1 border border-gray-200">1248×1664</td></tr>
+                  <tr><td className="px-2 py-1 border border-gray-200">9:16</td><td className="px-2 py-1 border border-gray-200">496×864</td><td className="px-2 py-1 border border-gray-200">720×1280</td><td className="px-2 py-1 border border-gray-200">1080×1920</td></tr>
+                  <tr><td className="px-2 py-1 border border-gray-200">21:9</td><td className="px-2 py-1 border border-gray-200">992×432</td><td className="px-2 py-1 border border-gray-200">1470×630</td><td className="px-2 py-1 border border-gray-200">2206×946</td></tr>
+                </tbody>
+              </table>
+              <p className="text-xs text-amber-600 mt-1">⚠️ 1080p 仅标准模型支持，fast 模型不支持</p>
             </div>
           </div>
         </div>
@@ -389,6 +392,7 @@ function Playground() {
             >
               <option value="720p">720p</option>
               <option value="480p">480p</option>
+              <option value="1080p">1080p</option>
             </select>
           </div>
         </div>
@@ -399,12 +403,12 @@ function Playground() {
             <input
               type="number"
               value={duration}
-              onChange={(e) => { const v = parseInt(e.target.value); setDuration(isNaN(v) ? 5 : Math.min(15, Math.max(5, v))); }}
-              min={5}
+              onChange={(e) => { const v = parseInt(e.target.value); setDuration(isNaN(v) ? 5 : (v === -1 ? -1 : Math.min(15, Math.max(4, v)))); }}
+              min={-1}
               max={15}
               className="w-20 px-2 py-1.5 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all"
             />
-            <span className="text-xs text-gray-400">秒</span>
+            <span className="text-xs text-gray-400">{duration === -1 ? '智能' : '秒'}</span>
           </div>
           <div className="flex items-center gap-2">
             <label className="text-sm font-medium text-gray-700">🔊 Audio</label>
@@ -561,6 +565,7 @@ function Playground() {
         {/* Check Result */}
         <div className="bg-white p-4 sm:p-5 rounded-xl shadow-sm space-y-3">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Check Result</h3>
+          <p className="text-xs text-amber-600">⚠️ 同一任务ID查询间隔需不少于 3 秒</p>
           <input
             type="text"
             value={taskId}

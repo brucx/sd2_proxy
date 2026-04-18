@@ -8,6 +8,7 @@ import AdminKeysPanel from '../components/AdminKeysPanel';
 import UsagePanel from '../components/UsagePanel';
 import RequestLogsPanel from '../components/RequestLogsPanel';
 import TenantDashboard from '../components/TenantDashboard';
+import AssetManagement from '../components/AssetManagement';
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -103,6 +104,7 @@ function Dashboard() {
         <div className="space-y-8">
           <AdminUsersPanel users={users} onRefresh={fetchData} />
           <AdminKeysPanel adminKeys={adminKeys} users={users} onRefresh={fetchData} />
+          <AssetManagement />
           <UsagePanel role="admin" users={users} />
           <RequestLogsPanel users={users} />
         </div>

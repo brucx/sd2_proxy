@@ -126,6 +126,16 @@ export const createHandler = async (c: any) => {
   }
 };
 
+// Per-task-ID poll throttle: minimum 3s between queries for the same task
+const taskPollTracker = new Map<string, number>();
+// Clean up stale entries every 5 minutes
+setInterval(() => {
+  const cutoff = Date.now() - 60_000;
+  for (const [k, v] of taskPollTracker) {
+    if (v < cutoff) taskPollTracker.delete(k);
+  }
+}, 5 * 60 * 1000);
+
 export const getResultHandler = async (c: any) => {
   const keyRecord = c.get('keyRecord');
   let body: any = {};
@@ -137,6 +147,17 @@ export const getResultHandler = async (c: any) => {
   const startTime = Date.now();
   const clientIp = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown';
   const requestBodyStr = JSON.stringify(body);
+
+  // Enforce minimum 3-second interval per task ID
+  const queryTaskId = body.id;
+  if (queryTaskId) {
+    const lastPoll = taskPollTracker.get(queryTaskId);
+    const now = Date.now();
+    if (lastPoll && (now - lastPoll) < 3000) {
+      return c.json({ error: '同一任务ID查询间隔需不少于 3 秒，请稍后重试' }, 429);
+    }
+    taskPollTracker.set(queryTaskId, now);
+  }
 
   try {
     const upstreamRes = await fetch(`${config.UPSTREAM_URL}/api/v1/doubao/get_result`, {
