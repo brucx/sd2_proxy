@@ -106,11 +106,11 @@ export default function AdminUsersPanel({ users, onRefresh }: Props) {
               </td>
               <td className="p-2">
                 <select
-                  value={u.provider || 'ark'}
+                  value={u.provider || 'meitu'}
                   onChange={e => updateProvider(u.id, e.target.value)}
                   className={`text-xs font-medium px-2 py-1 rounded border cursor-pointer ${u.provider === 'evolink' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}
                 >
-                  <option value="ark">Ark</option>
+                  <option value="meitu">Meitu</option>
                   <option value="evolink">Evolink</option>
                 </select>
               </td>
@@ -176,11 +176,11 @@ export default function AdminUsersPanel({ users, onRefresh }: Props) {
             <div className="flex items-center gap-2 text-sm">
               <span className="text-gray-600">Provider:</span>
               <select
-                value={u.provider || 'ark'}
+                value={u.provider || 'meitu'}
                 onChange={e => updateProvider(u.id, e.target.value)}
                 className={`text-xs font-medium px-2 py-1 rounded border cursor-pointer ${u.provider === 'evolink' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}
               >
-                <option value="ark">Ark</option>
+                <option value="meitu">Meitu</option>
                 <option value="evolink">Evolink</option>
               </select>
             </div>

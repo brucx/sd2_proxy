@@ -29,6 +29,13 @@
       "when": 1776499948514,
       "tag": "0003_add_credits_reserved",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776502238875,
+      "tag": "0004_rename_ark_to_meitu",
+      "breakpoints": true
     }
   ]
 }

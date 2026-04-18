@@ -145,8 +145,8 @@ adminRoutes.put('/users/:id/concurrency', async (c) => {
 adminRoutes.put('/users/:id/provider', async (c) => {
   const userId = parseInt(c.req.param('id'));
   const { provider } = await c.req.json();
-  if (!provider || !['ark', 'evolink'].includes(provider)) {
-    return c.json({ error: 'Provider 必须为 ark 或 evolink' }, 400);
+  if (!provider || !['meitu', 'evolink'].includes(provider)) {
+    return c.json({ error: 'Provider 必须为 meitu 或 evolink' }, 400);
   }
   const targetUser = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
   if (targetUser.length === 0) return c.json({ error: 'User not found' }, 404);
@@ -438,7 +438,7 @@ const assetAdminProxy = async (upstreamPath: string, body: any) => {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.ARK_API_KEY}`
+      'Authorization': `Bearer ${config.MEITU_API_KEY}`
     },
     body: JSON.stringify(body)
   });

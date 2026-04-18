@@ -25,7 +25,7 @@ const createAssetProxyHandler = (upstreamPath: string, endpointLabel: string) =>
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.ARK_API_KEY}`
+          'Authorization': `Bearer ${config.MEITU_API_KEY}`
         },
         body: requestBodyStr
       });

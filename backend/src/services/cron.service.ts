@@ -16,7 +16,7 @@ const processPendingTask = async (log: any) => {
   try {
     if (!log.taskId) return;
 
-    const provider = getProvider(log.provider || 'ark');
+    const provider = getProvider(log.provider || 'meitu');
     const result = await provider.queryTask(log.taskId);
 
     if (result.statusCode >= 200 && result.statusCode < 300) {
@@ -27,7 +27,7 @@ const processPendingTask = async (log: any) => {
         if (normalizedStatus === 'succeeded') {
           // For Evolink, prefer persisted credits_reserved (captured at create time).
           const storedCredits = log.creditsReserved ? parseFloat(log.creditsReserved) : undefined;
-          cost = calculateCost(log.provider || 'ark', {
+          cost = calculateCost(log.provider || 'meitu', {
             completionTokens: result.completionTokens || 0,
             hasVideo: log.hasVideoInput,
             duration: result.duration || log.videoDuration || 5,
@@ -82,7 +82,7 @@ const processPendingTask = async (log: any) => {
           }
         }
         
-        logger.info(`[${log.provider || 'ark'}] Updated task ${log.taskId} status to ${normalizedStatus}, cost: ¥${cost}, applied: ${statusUpdated}`);
+        logger.info(`[${log.provider || 'meitu'}] Updated task ${log.taskId} status to ${normalizedStatus}, cost: ¥${cost}, applied: ${statusUpdated}`);
       }
     }
   } catch (err) {
@@ -122,7 +122,7 @@ export function startCronJobs() {
           let recovered = false;
           try {
             if (log.taskId) {
-              const provider = getProvider(log.provider || 'ark');
+              const provider = getProvider(log.provider || 'meitu');
               const finalResult = await provider.queryTask(log.taskId);
               if (finalResult.statusCode >= 200 && finalResult.statusCode < 300) {
                 const finalStatus = finalResult.rawResponse.status;

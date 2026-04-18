@@ -11,13 +11,13 @@ export interface QueryTaskResult {
   status: 'pending' | 'processing' | 'succeeded' | 'failed';
   rawResponse: any;          // Upstream response translated to V3 format
   statusCode: number;
-  completionTokens?: number; // Ark: completion_tokens from usage
+  completionTokens?: number; // Meitu: completion_tokens from usage
   duration?: number;         // Evolink: output video duration (seconds, only in pending response)
   quality?: string;          // Evolink: output quality — unreachable, query never exposes it
 }
 
 export interface UpstreamProvider {
-  name: 'ark' | 'evolink';
+  name: 'meitu' | 'evolink';
   createTask(body: any): Promise<CreateTaskResult>;
   queryTask(taskId: string): Promise<QueryTaskResult>;
 }

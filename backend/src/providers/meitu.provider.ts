@@ -1,13 +1,13 @@
-// Ark upstream provider — extracted from existing proxy.routes.ts logic
+// Meitu upstream provider
 
 import { config } from '../config.js';
 import type { UpstreamProvider, CreateTaskResult, QueryTaskResult } from './types.js';
 
-class ArkProvider implements UpstreamProvider {
-  name = 'ark' as const;
+class MeituProvider implements UpstreamProvider {
+  name = 'meitu' as const;
 
   async createTask(body: any): Promise<CreateTaskResult> {
-    // Model mapping: user-facing name → Ark endpoint ID
+    // Model mapping: user-facing name → upstream endpoint ID
     const userModel = body.model;
     const mappedModel = config.MODEL_MAPPING[userModel];
     if (!mappedModel) {
@@ -26,7 +26,7 @@ class ArkProvider implements UpstreamProvider {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.ARK_API_KEY}`,
+        'Authorization': `Bearer ${config.MEITU_API_KEY}`,
       },
       body: JSON.stringify(upstreamBody),
     });
@@ -44,7 +44,7 @@ class ArkProvider implements UpstreamProvider {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.ARK_API_KEY}`,
+        'Authorization': `Bearer ${config.MEITU_API_KEY}`,
       },
       body: JSON.stringify({ id: taskId }),
     });
@@ -60,4 +60,4 @@ class ArkProvider implements UpstreamProvider {
   }
 }
 
-export const arkProvider = new ArkProvider();
+export const meituProvider = new MeituProvider();

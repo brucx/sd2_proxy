@@ -28,7 +28,7 @@ export const createHandler = async (c: any) => {
     return c.json({ error: '余额不足，请联系管理员充值' }, 403);
   }
 
-  const provider = userRecord[0]?.provider || 'ark';
+  const provider = userRecord[0]?.provider || 'meitu';
 
   // Key quota check
   if (keyRecord.quotaLimit !== null && keyRecord.quotaLimit !== undefined) {
@@ -68,7 +68,7 @@ export const createHandler = async (c: any) => {
     const isVideoInput = detectVideoInput(JSON.parse(originalBody));
 
     if (result.statusCode >= 200 && result.statusCode < 300 && result.taskId) {
-      // Evolink-specific billing fields; Ark has no top-level duration/quality/credits.
+      // Evolink-specific billing fields; Meitu has no top-level duration/quality/credits.
       const evolinkFields = provider === 'evolink'
         ? {
             videoDuration: body.duration || null,
@@ -167,7 +167,7 @@ export const getResultHandler = async (c: any) => {
     const existingLog = queryTaskId
       ? await db.select().from(schema.usageLogs).where(eq(schema.usageLogs.taskId, queryTaskId)).limit(1)
       : [];
-    const logProvider = existingLog.length > 0 ? (existingLog[0]!.provider || 'ark') : 'ark';
+    const logProvider = existingLog.length > 0 ? (existingLog[0]!.provider || 'meitu') : 'meitu';
 
     // Use the correct provider for querying
     const upstream = getProvider(logProvider);

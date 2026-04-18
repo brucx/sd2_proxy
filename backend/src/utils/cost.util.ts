@@ -10,8 +10,8 @@ export function detectVideoInput(body: any): boolean {
   }
 }
 
-// -- Ark billing: per completion_tokens --
-export function calculateArkCost(completionTokens: number, hasVideo: boolean): string {
+// -- Meitu billing: per completion_tokens --
+export function calculateMeituCost(completionTokens: number, hasVideo: boolean): string {
   const pricePerToken = (hasVideo ? config.PRICE_WITH_VIDEO : config.PRICE_WITHOUT_VIDEO) / 1_000_000;
   return (completionTokens * pricePerToken).toFixed(6);
 }
@@ -56,6 +56,6 @@ export function calculateCost(
     }
     return calculateEvolinkCost(params.duration || 5, params.quality || '720p');
   }
-  return calculateArkCost(params.completionTokens || 0, params.hasVideo || false);
+  return calculateMeituCost(params.completionTokens || 0, params.hasVideo || false);
 }
 
