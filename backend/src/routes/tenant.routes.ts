@@ -80,10 +80,15 @@ tenantRoutes.get('/keys', async (c) => {
   return c.json(userKeys);
 });
 
-// Tenant: Create key
+// Tenant: Create key.
+// `provider` is optional: when omitted (or empty), the key inherits the
+// user-level provider at request time. When provided, it must be a valid value.
 tenantRoutes.post('/keys', async (c) => {
   const user = c.get('user');
-  const { name, expiresAt } = await c.req.json();
+  const { name, expiresAt, provider } = await c.req.json();
+  if (provider != null && provider !== '' && !['meitu', 'evolink'].includes(provider)) {
+    return c.json({ error: 'Provider 必须为 meitu 或 evolink' }, 400);
+  }
   const { v4: uuidv4 } = await import('uuid');
   const apiKey = `sk-${uuidv4().replace(/-/g, '')}`;
 
@@ -92,8 +97,29 @@ tenantRoutes.post('/keys', async (c) => {
     apiKey,
     name,
     ...(expiresAt ? { expiresAt: new Date(expiresAt) } : {}),
+    ...(provider ? { provider } : {}),
   });
   return c.json({ success: true, apiKey });
+});
+
+// Tenant: Update key provider (null/empty → inherit user-level provider)
+tenantRoutes.put('/keys/:id/provider', async (c) => {
+  const user = c.get('user');
+  const keyId = parseInt(c.req.param('id'));
+  const { provider } = await c.req.json();
+  const next = provider == null || provider === '' ? null : provider;
+  if (next !== null && !['meitu', 'evolink'].includes(next)) {
+    return c.json({ error: 'Provider 必须为 meitu 或 evolink' }, 400);
+  }
+
+  const keyRecord = await db.select().from(schema.keys)
+    .where(and(eq(schema.keys.id, keyId), eq(schema.keys.userId, user.id), isNull(schema.keys.deletedAt)))
+    .limit(1);
+  if (keyRecord.length === 0) return c.json({ error: 'Key not found' }, 404);
+
+  await db.update(schema.keys).set({ provider: next }).where(eq(schema.keys.id, keyId));
+  clearKeyCache();
+  return c.json({ success: true });
 });
 
 // Tenant: Soft-delete own key

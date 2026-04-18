@@ -50,7 +50,8 @@ export const createHandler = async (c: any) => {
     return c.json({ error: '余额不足，请联系管理员充值' }, 403);
   }
 
-  const provider = userRecord[0]?.provider || 'meitu';
+  // Per-key provider overrides the user-level default; null inherits from user.
+  const provider = keyRecord.provider || userRecord[0]?.provider || 'meitu';
 
   if (keyRecord.quotaLimit !== null && keyRecord.quotaLimit !== undefined) {
     const used = parseFloat(keyRecord.quotaUsed || '0');

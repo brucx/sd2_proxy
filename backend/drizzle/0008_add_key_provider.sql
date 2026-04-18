@@ -1,0 +1,1 @@
+ALTER TABLE "keys" ADD COLUMN "provider" varchar(50);

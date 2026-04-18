@@ -14,6 +14,8 @@ interface ProviderRow {
   avgDurationMs: number | null;
   todayTasks: number;
   todayCost: string;
+  rangeTasks: number | null;
+  rangeCost: string | null;
 }
 
 const providerClass = (p: string) => {
@@ -38,13 +40,19 @@ const formatDuration = (ms: number | null) => {
 export default function ProviderStatsPanel() {
   const [rows, setRows] = useState<ProviderRow[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
-  const fetchStats = async () => {
+  const fetchStats = async (start = startDate, end = endDate) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get('/admin/stats/providers');
+      const params: Record<string, string> = {};
+      if (start) params.startDate = start;
+      if (end) params.endDate = end;
+      const res = await api.get('/admin/stats/providers', { params });
       setRows(res.data.providers || []);
     } catch (err: any) {
       setError(err?.response?.data?.error || '加载失败');
@@ -53,22 +61,83 @@ export default function ProviderStatsPanel() {
     }
   };
 
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      const params: Record<string, string> = {};
+      if (startDate) params.startDate = startDate;
+      if (endDate) params.endDate = endDate;
+      const res = await api.get('/admin/stats/providers/export', { params, responseType: 'blob' });
+      const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const suffix = startDate || endDate ? `_${startDate || ''}_${endDate || ''}` : '';
+      a.download = `provider_stats${suffix}_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setError(err?.response?.data?.error || '导出失败');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   useEffect(() => { fetchStats(); }, []);
 
+  const hasRange = !!(startDate || endDate);
   const totalCostAll = rows?.reduce((acc, r) => acc + parseFloat(r.totalCost || '0'), 0) ?? 0;
   const totalTasksAll = rows?.reduce((acc, r) => acc + r.totalTasks, 0) ?? 0;
   const todayCostAll = rows?.reduce((acc, r) => acc + parseFloat(r.todayCost || '0'), 0) ?? 0;
+  const rangeCostAll = rows?.reduce((acc, r) => acc + parseFloat(r.rangeCost || '0'), 0) ?? 0;
+  const rangeTasksAll = rows?.reduce((acc, r) => acc + (r.rangeTasks || 0), 0) ?? 0;
 
   return (
     <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 className="text-xl font-bold">分供应商消耗统计</h2>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3 sm:items-end mb-4 flex-wrap">
+        <div className="w-full sm:w-auto">
+          <label className="block text-xs text-gray-500 mb-1">开始日期</label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={e => { setStartDate(e.target.value); fetchStats(e.target.value, endDate); }}
+            className="border px-3 py-1.5 rounded-md text-sm w-full sm:w-auto"
+          />
+        </div>
+        <div className="w-full sm:w-auto">
+          <label className="block text-xs text-gray-500 mb-1">结束日期</label>
+          <input
+            type="date"
+            value={endDate}
+            onChange={e => { setEndDate(e.target.value); fetchStats(startDate, e.target.value); }}
+            className="border px-3 py-1.5 rounded-md text-sm w-full sm:w-auto"
+          />
+        </div>
+        {hasRange && (
+          <button
+            onClick={() => { setStartDate(''); setEndDate(''); fetchStats('', ''); }}
+            className="text-sm text-gray-500 hover:text-gray-700 hover:underline px-2 py-1.5"
+          >
+            清除
+          </button>
+        )}
         <button
-          onClick={fetchStats}
+          onClick={() => fetchStats()}
           disabled={loading}
-          className="bg-gray-600 text-white px-4 py-1.5 rounded-md text-sm disabled:opacity-40"
+          className="bg-gray-600 text-white px-4 py-1.5 rounded-md text-sm disabled:opacity-40 w-full sm:w-auto"
         >
           {loading ? '加载中...' : '刷新'}
+        </button>
+        <button
+          onClick={exportCsv}
+          disabled={exporting || !rows || rows.length === 0}
+          className="bg-green-600 text-white px-4 py-1.5 rounded-md text-sm disabled:opacity-40 w-full sm:w-auto"
+        >
+          {exporting ? '导出中...' : '导出 CSV'}
         </button>
       </div>
 
@@ -91,6 +160,12 @@ export default function ProviderStatsPanel() {
             <span className="text-xs text-amber-500">今日消耗</span>
             <div className="font-semibold text-base">¥{todayCostAll.toFixed(4)}</div>
           </div>
+          {hasRange && (
+            <div className="px-3 py-2 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-sm">
+              <span className="text-xs text-indigo-500">区间消耗</span>
+              <div className="font-semibold text-base">¥{rangeCostAll.toFixed(4)} <span className="text-xs text-indigo-400">({rangeTasksAll} 任务)</span></div>
+            </div>
+          )}
         </div>
       )}
 
@@ -114,6 +189,8 @@ export default function ProviderStatsPanel() {
                   <th className="p-2">平均处理时长</th>
                   <th className="p-2">今日任务</th>
                   <th className="p-2">今日消耗</th>
+                  {hasRange && <th className="p-2">区间任务</th>}
+                  {hasRange && <th className="p-2">区间消耗</th>}
                   <th className="p-2">累计消耗</th>
                 </tr>
               </thead>
@@ -134,6 +211,8 @@ export default function ProviderStatsPanel() {
                     <td className="p-2 whitespace-nowrap">{formatDuration(r.avgDurationMs)}</td>
                     <td className="p-2">{r.todayTasks}</td>
                     <td className="p-2 font-semibold text-amber-600">¥{r.todayCost}</td>
+                    {hasRange && <td className="p-2">{r.rangeTasks ?? 0}</td>}
+                    {hasRange && <td className="p-2 font-semibold text-indigo-600">¥{r.rangeCost ?? '0.0000'}</td>}
                     <td className="p-2 font-semibold text-orange-600">¥{r.totalCost}</td>
                   </tr>
                 ))}
@@ -163,6 +242,11 @@ export default function ProviderStatsPanel() {
                   <span className="text-amber-600 font-semibold">今日 ¥{r.todayCost}</span>
                   <span className="text-orange-600 font-semibold">累计 ¥{r.totalCost}</span>
                 </div>
+                {hasRange && (
+                  <div className="text-sm text-indigo-600 font-semibold mt-1">
+                    区间 ¥{r.rangeCost ?? '0.0000'} <span className="text-xs text-indigo-400">({r.rangeTasks ?? 0} 任务)</span>
+                  </div>
+                )}
               </div>
             ))}
           </div>

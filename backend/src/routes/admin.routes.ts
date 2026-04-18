@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import bcrypt from 'bcrypt';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { eq, desc, and, gte, lte, sql, like } from 'drizzle-orm';
+import { eq, desc, and, gte, lte, sql, like, isNull } from 'drizzle-orm';
 import { authMiddleware, adminMiddleware } from '../middlewares/auth.middleware.js';
 import { clearKeyCache } from '../middlewares/proxy.middleware.js';
 import { concurrencyCache } from '../services/concurrency.service.js';
@@ -72,12 +72,96 @@ adminRoutes.get('/stats', async (c) => {
 });
 
 // Admin: Per-provider consumption statistics.
-// Aggregates usage_logs by provider, returns lifetime + today totals alongside
-// success/failure mix and average upstream processing time.
+// Aggregates usage_logs by provider. Always returns lifetime totals plus
+// today's metrics; when ?startDate / ?endDate are provided, also returns
+// per-provider totals within that range (rangeTasks / rangeCost).
 adminRoutes.get('/stats/providers', async (c) => {
+  const startDate = c.req.query('startDate');
+  const endDate = c.req.query('endDate');
+  const { rows, hasRange, range } = await fetchProviderStats(startDate, endDate);
+
+  return c.json({
+    range: hasRange ? range : null,
+    providers: rows.map(r => ({
+      provider: r.provider,
+      totalTasks: Number(r.totalTasks || 0),
+      succeeded: Number(r.succeeded || 0),
+      failed: Number(r.failed || 0),
+      pending: Number(r.pending || 0),
+      cancelled: Number(r.cancelled || 0),
+      expired: Number(r.expired || 0),
+      totalTokens: Number(r.totalTokens || 0),
+      totalCost: parseFloat(String(r.totalCost || '0')).toFixed(4),
+      avgDurationMs: r.avgDurationMs != null ? Math.round(Number(r.avgDurationMs)) : null,
+      todayTasks: Number(r.todayTasks || 0),
+      todayCost: parseFloat(String(r.todayCost || '0')).toFixed(4),
+      rangeTasks: hasRange ? Number(r.rangeTasks || 0) : null,
+      rangeCost: hasRange ? parseFloat(String(r.rangeCost || '0')).toFixed(4) : null,
+    })),
+  });
+});
+
+// Admin: Export provider stats as CSV. Supports the same date-range filter.
+adminRoutes.get('/stats/providers/export', async (c) => {
+  const startDate = c.req.query('startDate');
+  const endDate = c.req.query('endDate');
+  try {
+    const { rows, hasRange } = await fetchProviderStats(startDate, endDate);
+
+    const baseHeader = ['Provider', 'TotalTasks', 'Succeeded', 'Failed', 'Pending', 'Cancelled', 'Expired', 'TotalTokens', 'AvgDurationMs', 'TotalCost', 'TodayTasks', 'TodayCost'];
+    if (hasRange) baseHeader.push('RangeTasks', 'RangeCost');
+    const header = baseHeader.join(',');
+
+    const rangeSuffix = hasRange ? `_${startDate || ''}_${endDate || ''}` : '';
+    const csvRows = rows.map(r => {
+      const cols: (string | number)[] = [
+        r.provider || '',
+        Number(r.totalTasks || 0),
+        Number(r.succeeded || 0),
+        Number(r.failed || 0),
+        Number(r.pending || 0),
+        Number(r.cancelled || 0),
+        Number(r.expired || 0),
+        Number(r.totalTokens || 0),
+        r.avgDurationMs != null ? Math.round(Number(r.avgDurationMs)) : '',
+        parseFloat(String(r.totalCost || '0')).toFixed(4),
+        Number(r.todayTasks || 0),
+        parseFloat(String(r.todayCost || '0')).toFixed(4),
+      ];
+      if (hasRange) {
+        cols.push(Number(r.rangeTasks || 0), parseFloat(String(r.rangeCost || '0')).toFixed(4));
+      }
+      return cols.join(',');
+    });
+    const csv = '\uFEFF' + [header, ...csvRows].join('\n');
+
+    c.header('Content-Type', 'text/csv; charset=utf-8');
+    c.header('Content-Disposition', `attachment; filename="provider_stats${rangeSuffix}_${new Date().toISOString().slice(0, 10)}.csv"`);
+    return c.body(csv);
+  } catch (error) {
+    console.error('Provider stats export error:', error);
+    return c.json({ error: 'Internal Server Error' }, 500);
+  }
+});
+
+async function fetchProviderStats(startDate?: string, endDate?: string) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const todayIso = today.toISOString();
+
+  const start = startDate ? new Date(startDate) : null;
+  const end = endDate ? new Date(endDate) : null;
+  if (end) end.setHours(23, 59, 59, 999);
+  const hasRange = !!(start || end);
+  const startIso = start ? start.toISOString() : null;
+  const endIso = end ? end.toISOString() : null;
+
+  const rangeTasksExpr = hasRange
+    ? sql<number>`count(*) filter (where ${schema.usageLogs.createdAt} >= ${startIso ?? '-infinity'}::timestamp and ${schema.usageLogs.createdAt} <= ${endIso ?? 'infinity'}::timestamp)`
+    : sql<number>`0`;
+  const rangeCostExpr = hasRange
+    ? sql<string>`coalesce(sum(${schema.usageLogs.costYuan}::numeric) filter (where ${schema.usageLogs.createdAt} >= ${startIso ?? '-infinity'}::timestamp and ${schema.usageLogs.createdAt} <= ${endIso ?? 'infinity'}::timestamp), 0)`
+    : sql<string>`'0'`;
 
   const rows = await db.select({
     provider: schema.usageLogs.provider,
@@ -92,28 +176,15 @@ adminRoutes.get('/stats/providers', async (c) => {
     avgDurationMs: sql<number | null>`avg(${schema.usageLogs.taskDurationMs}) filter (where ${schema.usageLogs.status} = 'succeeded')`,
     todayTasks: sql<number>`count(*) filter (where ${schema.usageLogs.createdAt} >= ${todayIso}::timestamp)`,
     todayCost: sql<string>`coalesce(sum(${schema.usageLogs.costYuan}::numeric) filter (where ${schema.usageLogs.createdAt} >= ${todayIso}::timestamp), 0)`,
+    rangeTasks: rangeTasksExpr,
+    rangeCost: rangeCostExpr,
   })
     .from(schema.usageLogs)
     .groupBy(schema.usageLogs.provider)
     .orderBy(desc(sql`coalesce(sum(${schema.usageLogs.costYuan}::numeric), 0)`));
 
-  return c.json({
-    providers: rows.map(r => ({
-      provider: r.provider,
-      totalTasks: Number(r.totalTasks || 0),
-      succeeded: Number(r.succeeded || 0),
-      failed: Number(r.failed || 0),
-      pending: Number(r.pending || 0),
-      cancelled: Number(r.cancelled || 0),
-      expired: Number(r.expired || 0),
-      totalTokens: Number(r.totalTokens || 0),
-      totalCost: parseFloat(String(r.totalCost || '0')).toFixed(4),
-      avgDurationMs: r.avgDurationMs != null ? Math.round(Number(r.avgDurationMs)) : null,
-      todayTasks: Number(r.todayTasks || 0),
-      todayCost: parseFloat(String(r.todayCost || '0')).toFixed(4),
-    })),
-  });
-});
+  return { rows, hasRange, range: { startDate: startDate || null, endDate: endDate || null } };
+}
 
 // Admin: Reset user password
 adminRoutes.put('/users/:id/password', async (c) => {
@@ -431,7 +502,13 @@ adminRoutes.get('/request-logs', async (c) => {
 });
 
 // Admin: Get all keys
+// Always excludes soft-deleted keys. By default also hides disabled keys;
+// pass ?includeDisabled=true to show disabled keys in the listing.
 adminRoutes.get('/keys', async (c) => {
+  const includeDisabled = c.req.query('includeDisabled') === 'true';
+  const conditions: any[] = [isNull(schema.keys.deletedAt)];
+  if (!includeDisabled) conditions.push(eq(schema.keys.enabled, true));
+
   const allKeys = await db
     .select({
       id: schema.keys.id,
@@ -441,17 +518,23 @@ adminRoutes.get('/keys', async (c) => {
       name: schema.keys.name,
       enabled: schema.keys.enabled,
       expiresAt: schema.keys.expiresAt,
+      provider: schema.keys.provider,
+      userProvider: schema.users.provider,
       createdAt: schema.keys.createdAt,
     })
     .from(schema.keys)
-    .innerJoin(schema.users, eq(schema.keys.userId, schema.users.id));
+    .innerJoin(schema.users, eq(schema.keys.userId, schema.users.id))
+    .where(and(...conditions));
   return c.json(allKeys);
 });
 
 // Admin: Create key for user
 adminRoutes.post('/keys', async (c) => {
-  const { userId, name, expiresAt } = await c.req.json();
+  const { userId, name, expiresAt, provider } = await c.req.json();
   if (!userId || !name) return c.json({ error: 'userId and name are required' }, 400);
+  if (provider != null && provider !== '' && !['meitu', 'evolink'].includes(provider)) {
+    return c.json({ error: 'Provider 必须为 meitu 或 evolink' }, 400);
+  }
 
   const targetUser = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
   if (targetUser.length === 0) return c.json({ error: 'User not found' }, 404);
@@ -463,8 +546,26 @@ adminRoutes.post('/keys', async (c) => {
     apiKey,
     name,
     ...(expiresAt ? { expiresAt: new Date(expiresAt) } : {}),
+    ...(provider ? { provider } : {}),
   });
   return c.json({ success: true, apiKey });
+});
+
+// Admin: Update key provider (null/empty → inherit user-level provider)
+adminRoutes.put('/keys/:id/provider', async (c) => {
+  const keyId = parseInt(c.req.param('id'));
+  const { provider } = await c.req.json();
+  const next = provider == null || provider === '' ? null : provider;
+  if (next !== null && !['meitu', 'evolink'].includes(next)) {
+    return c.json({ error: 'Provider 必须为 meitu 或 evolink' }, 400);
+  }
+
+  const keyRecord = await db.select().from(schema.keys).where(eq(schema.keys.id, keyId)).limit(1);
+  if (keyRecord.length === 0) return c.json({ error: 'Key not found' }, 404);
+
+  await db.update(schema.keys).set({ provider: next }).where(eq(schema.keys.id, keyId));
+  clearKeyCache();
+  return c.json({ success: true });
 });
 
 // Admin: Toggle key

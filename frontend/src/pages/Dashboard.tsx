@@ -19,7 +19,6 @@ function Dashboard() {
 
   // Admin state
   const [users, setUsers] = useState<any[]>([]);
-  const [adminKeys, setAdminKeys] = useState<any[]>([]);
 
   // Tenant state
   const [keys, setKeys] = useState<any[]>([]);
@@ -44,12 +43,8 @@ function Dashboard() {
   const fetchData = async () => {
     try {
       if (role === 'admin') {
-        const [usersRes, keysRes] = await Promise.all([
-          api.get('/admin/users'),
-          api.get('/admin/keys'),
-        ]);
+        const usersRes = await api.get('/admin/users');
         setUsers(usersRes.data);
-        setAdminKeys(keysRes.data);
       } else {
         const [keysRes, whitelistRes, balanceRes] = await Promise.all([
           api.get('/keys'),
@@ -105,7 +100,7 @@ function Dashboard() {
         <div className="space-y-8">
           <ProviderStatsPanel />
           <AdminUsersPanel users={users} onRefresh={fetchData} />
-          <AdminKeysPanel adminKeys={adminKeys} users={users} onRefresh={fetchData} />
+          <AdminKeysPanel users={users} />
           <AssetManagement />
           <UsagePanel role="admin" users={users} />
           <RequestLogsPanel users={users} />

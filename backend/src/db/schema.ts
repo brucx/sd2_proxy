@@ -23,6 +23,7 @@ export const keys = pgTable('keys', {
   quotaLimit: numeric('quota_limit', { precision: 20, scale: 4 }),  // null = 不限制
   quotaUsed: numeric('quota_used', { precision: 20, scale: 4 }).notNull().default('0'),
   concurrencyLimit: integer('concurrency_limit'),  // null = 不限制（跟随用户级）
+  provider: varchar('provider', { length: 50 }),  // null = 跟随用户级 users.provider
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => [
   index('keys_user_id_idx').on(table.userId),
