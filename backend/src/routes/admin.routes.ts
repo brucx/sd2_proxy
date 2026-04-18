@@ -414,6 +414,7 @@ adminRoutes.get('/usage', async (c) => {
         username: schema.users.username,
         keyId: schema.usageLogs.keyId,
         keyName: schema.keys.name,
+        apiKey: schema.keys.apiKey,
         endpoint: schema.usageLogs.endpoint,
         taskId: schema.usageLogs.taskId,
         completionTokens: schema.usageLogs.completionTokens,
@@ -432,7 +433,7 @@ adminRoutes.get('/usage', async (c) => {
       .offset(offset);
 
     const logsRaw = where ? await (query as any).where(where) : await query;
-    const logs = logsRaw.map((l: any) => ({ ...l, keyName: l.keyName || `Key#${l.keyId}` }));
+    const logs = logsRaw.map((l: any) => ({ ...l, keyName: l.keyName ? `${l.keyName} (...${l.apiKey?.slice(-4) || '??'})` : `Key#${l.keyId}` }));
 
     return c.json({
       logs, total, page, pageSize,

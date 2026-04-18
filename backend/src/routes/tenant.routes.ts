@@ -226,6 +226,7 @@ tenantRoutes.get('/usage', async (c) => {
       taskDurationMs: schema.usageLogs.taskDurationMs,
       createdAt: schema.usageLogs.createdAt,
       keyName: schema.keys.name,
+      apiKey: schema.keys.apiKey,
     })
       .from(schema.usageLogs)
       .leftJoin(schema.keys, eq(schema.usageLogs.keyId, schema.keys.id))
@@ -233,11 +234,12 @@ tenantRoutes.get('/usage', async (c) => {
       .orderBy(desc(schema.usageLogs.createdAt))
       .limit(pageSize)
       .offset(offset);
-    const logs = logsRaw.map(l => ({ ...l, keyName: l.keyName || `Key#${l.keyId}` }));
+    const logs = logsRaw.map(l => ({ ...l, keyName: l.keyName ? `${l.keyName} (...${l.apiKey?.slice(-4) || '??'})` : `Key#${l.keyId}` }));
 
     const keySummary = await db.select({
       keyId: schema.usageLogs.keyId,
       keyName: schema.keys.name,
+      apiKey: schema.keys.apiKey,
       totalTokens: sql<number>`coalesce(sum(${schema.usageLogs.completionTokens}), 0)`,
       totalCost: sql<string>`coalesce(sum(${schema.usageLogs.costYuan}::numeric), 0)`,
       requestCount: sql<number>`count(*)`,
@@ -245,7 +247,7 @@ tenantRoutes.get('/usage', async (c) => {
       .from(schema.usageLogs)
       .innerJoin(schema.keys, eq(schema.usageLogs.keyId, schema.keys.id))
       .where(where)
-      .groupBy(schema.usageLogs.keyId, schema.keys.name);
+      .groupBy(schema.usageLogs.keyId, schema.keys.name, schema.keys.apiKey);
 
     return c.json({
       logs, total, page, pageSize,
@@ -253,7 +255,7 @@ tenantRoutes.get('/usage', async (c) => {
       totalCost: parseFloat(String(totalsResult[0]?.totalCost || '0')).toFixed(4),
       keySummary: keySummary.map(k => ({
         keyId: k.keyId,
-        keyName: k.keyName,
+        keyName: k.keyName ? `${k.keyName} (...${k.apiKey?.slice(-4) || '??'})` : `Key#${k.keyId}`,
         totalTokens: Number(k.totalTokens),
         totalCost: parseFloat(String(k.totalCost || '0')).toFixed(4),
         requestCount: Number(k.requestCount),

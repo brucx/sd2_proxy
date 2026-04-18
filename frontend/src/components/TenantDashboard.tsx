@@ -48,14 +48,7 @@ export default function TenantDashboard({
     onRefresh();
   };
 
-  const updateKeyProvider = async (keyId: number, current: string | null) => {
-    const input = window.prompt('设置该 Key 的 Provider（meitu / evolink / ark / auto，留空表示跟随账户默认）：', current || '');
-    if (input === null) return;
-    const value = input.trim().toLowerCase();
-    if (value !== '' && !['meitu', 'evolink', 'ark', 'auto'].includes(value)) {
-      alert('Provider 必须为 meitu / evolink / ark / auto');
-      return;
-    }
+  const updateKeyProvider = async (keyId: number, value: string) => {
     try {
       await api.put(`/keys/${keyId}/provider`, { provider: value === '' ? null : value });
       onRefresh();
@@ -246,9 +239,17 @@ export default function TenantDashboard({
                   </span>
                 </td>
                 <td className="p-2 text-sm">
-                  {k.provider
-                    ? <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${k.provider === 'evolink' ? 'bg-purple-100 text-purple-700' : k.provider === 'auto' ? 'bg-amber-100 text-amber-700' : k.provider === 'ark' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>{k.provider}</span>
-                    : <span className="text-gray-400 text-xs">跟随账户</span>}
+                  <select 
+                    value={k.provider || ''} 
+                    onChange={(e) => updateKeyProvider(k.id, e.target.value)}
+                    className="border border-gray-200 px-2 py-1 rounded text-xs bg-gray-50 hover:bg-gray-100 focus:bg-white transition-colors cursor-pointer outline-none focus:border-blue-300"
+                  >
+                    <option value="">跟随账户</option>
+                    <option value="meitu">Meitu</option>
+                    <option value="evolink">Evolink</option>
+                    <option value="ark">Ark</option>
+                    <option value="auto">Auto (Meitu→Evolink)</option>
+                  </select>
                 </td>
                 <td className="p-2 text-sm">
                   {k.quotaLimit !== null && k.quotaLimit !== undefined
@@ -263,7 +264,6 @@ export default function TenantDashboard({
                 <td className="p-2 text-sm">{new Date(k.createdAt).toLocaleDateString()}</td>
                 <td className="p-2">
                   <div className="flex flex-wrap gap-1">
-                    <button onClick={() => updateKeyProvider(k.id, k.provider)} className="text-purple-500 hover:underline text-xs">Provider</button>
                     <button onClick={() => setQuota(k.id, k.quotaLimit)} className="text-blue-500 hover:underline text-xs">配额</button>
                     {k.quotaLimit !== null && k.quotaLimit !== undefined && (
                       <button onClick={() => resetQuota(k.id)} className="text-orange-500 hover:underline text-xs">重置</button>
@@ -290,9 +290,19 @@ export default function TenantDashboard({
                 </button>
               </div>
               <div className="flex gap-4 text-xs text-gray-600 mt-1 flex-wrap">
-                <span>Provider: {k.provider
-                  ? <span className={`inline-block px-1.5 py-0.5 rounded font-medium ${k.provider === 'evolink' ? 'bg-purple-100 text-purple-700' : k.provider === 'auto' ? 'bg-amber-100 text-amber-700' : k.provider === 'ark' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>{k.provider}</span>
-                  : <span className="text-gray-400">跟随账户</span>}</span>
+                <div className="flex items-center gap-1">Provider: 
+                  <select 
+                    value={k.provider || ''} 
+                    onChange={(e) => updateKeyProvider(k.id, e.target.value)}
+                    className="border border-gray-200 px-1 py-0.5 rounded text-xs bg-gray-50 outline-none focus:border-blue-300"
+                  >
+                    <option value="">跟随账户</option>
+                    <option value="meitu">Meitu</option>
+                    <option value="evolink">Evolink</option>
+                    <option value="ark">Ark</option>
+                    <option value="auto">Auto</option>
+                  </select>
+                </div>
                 <span>配额: {k.quotaLimit !== null && k.quotaLimit !== undefined
                   ? <span className={parseFloat(k.quotaUsed || '0') >= parseFloat(k.quotaLimit) ? 'text-red-600 font-semibold' : ''}>¥{parseFloat(k.quotaUsed || '0').toFixed(2)}/{parseFloat(k.quotaLimit).toFixed(2)}</span>
                   : <span className="text-gray-400">不限</span>}</span>
@@ -302,7 +312,6 @@ export default function TenantDashboard({
               </div>
               <div className="flex justify-between items-center pt-2 border-t border-gray-200 mt-1">
                 <div className="flex gap-2 flex-wrap">
-                  <button onClick={() => updateKeyProvider(k.id, k.provider)} className="text-purple-500 hover:underline text-xs">Provider</button>
                   <button onClick={() => setQuota(k.id, k.quotaLimit)} className="text-blue-500 hover:underline text-xs">配额</button>
                   {k.quotaLimit !== null && k.quotaLimit !== undefined && (
                     <button onClick={() => resetQuota(k.id)} className="text-orange-500 hover:underline text-xs">重置</button>

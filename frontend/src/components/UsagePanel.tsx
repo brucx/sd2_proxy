@@ -121,7 +121,7 @@ export default function UsagePanel({ role, users, keys }: Props) {
             <label className="block text-sm text-gray-600 mb-1">按 API Key 筛选</label>
             <select value={usageKeyFilter} onChange={e => { setUsageKeyFilter(e.target.value); fetchUsage(1, usageUserFilter, usageStartDate, usageEndDate, e.target.value); }} className="border px-3 py-2 rounded-md w-full sm:w-auto">
               <option value="">全部 Key</option>
-              {keys.map(k => (<option key={k.id} value={k.id}>{k.name}</option>))}
+              {keys.map(k => (<option key={k.id} value={k.id}>{k.name} (...{k.apiKey?.slice(-4) || '??'})</option>))}
             </select>
           </div>
         )}

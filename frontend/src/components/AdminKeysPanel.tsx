@@ -53,14 +53,7 @@ export default function AdminKeysPanel({ users }: Props) {
     fetchKeys(showDisabled);
   };
 
-  const updateKeyProvider = async (keyId: number, current: string | null) => {
-    const input = window.prompt('设置该 Key 的 Provider（meitu / evolink / ark / auto，留空表示跟随用户默认）：', current || '');
-    if (input === null) return;
-    const value = input.trim().toLowerCase();
-    if (value !== '' && !['meitu', 'evolink', 'ark', 'auto'].includes(value)) {
-      alert('Provider 必须为 meitu / evolink / ark / auto');
-      return;
-    }
+  const updateKeyProvider = async (keyId: number, value: string) => {
     try {
       await api.put(`/admin/keys/${keyId}/provider`, { provider: value === '' ? null : value });
       fetchKeys(showDisabled);
@@ -132,9 +125,17 @@ export default function AdminKeysPanel({ users }: Props) {
                 </span>
               </td>
               <td className="p-2 text-xs">
-                {k.provider
-                  ? <span className={`inline-block px-2 py-0.5 rounded font-medium ${k.provider === 'evolink' ? 'bg-purple-100 text-purple-700' : k.provider === 'auto' ? 'bg-amber-100 text-amber-700' : k.provider === 'ark' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>{k.provider}</span>
-                  : <span className="text-gray-400">跟随用户 ({k.userProvider})</span>}
+                <select 
+                  value={k.provider || ''} 
+                  onChange={(e) => updateKeyProvider(k.id, e.target.value)}
+                  className="border border-gray-200 px-2 py-1 rounded text-xs bg-gray-50 hover:bg-gray-100 focus:bg-white transition-colors cursor-pointer outline-none focus:border-blue-300"
+                >
+                  <option value="">跟随用户 ({k.userProvider || '未设置'})</option>
+                  <option value="meitu">Meitu</option>
+                  <option value="evolink">Evolink</option>
+                  <option value="ark">Ark</option>
+                  <option value="auto">Auto</option>
+                </select>
               </td>
               <td className="p-2">
                 <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${k.enabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
@@ -144,7 +145,6 @@ export default function AdminKeysPanel({ users }: Props) {
               <td className="p-2">{new Date(k.createdAt).toLocaleDateString()}</td>
               <td className="p-2">
                 <div className="flex flex-wrap gap-2">
-                  <button onClick={() => updateKeyProvider(k.id, k.provider)} className="text-purple-500 hover:underline text-xs">Provider</button>
                   <button onClick={() => toggleKey(k.id)} className={`text-sm font-medium ${k.enabled ? 'text-red-500 hover:underline' : 'text-green-600 hover:underline'}`}>
                     {k.enabled ? '禁用' : '启用'}
                   </button>
@@ -165,10 +165,19 @@ export default function AdminKeysPanel({ users }: Props) {
               </span>
             </div>
             <div className="text-sm text-gray-600">User: {k.username}</div>
-            <div className="text-xs text-gray-600">
-              Provider: {k.provider
-                ? <span className={`inline-block px-1.5 py-0.5 rounded font-medium ${k.provider === 'evolink' ? 'bg-purple-100 text-purple-700' : k.provider === 'auto' ? 'bg-amber-100 text-amber-700' : k.provider === 'ark' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>{k.provider}</span>
-                : <span className="text-gray-400">跟随用户 ({k.userProvider})</span>}
+            <div className="text-xs text-gray-600 flex items-center gap-1">
+              Provider: 
+              <select 
+                value={k.provider || ''} 
+                onChange={(e) => updateKeyProvider(k.id, e.target.value)}
+                className="border border-gray-200 px-1 py-0.5 rounded text-xs bg-gray-50 outline-none focus:border-blue-300"
+              >
+                <option value="">跟随用户 ({k.userProvider || '未设置'})</option>
+                <option value="meitu">Meitu</option>
+                <option value="evolink">Evolink</option>
+                <option value="ark">Ark</option>
+                <option value="auto">Auto</option>
+              </select>
             </div>
             <div className="flex items-center justify-between mt-1">
               <span className="font-mono text-xs text-gray-600">{maskKey(k.apiKey)}</span>
@@ -179,7 +188,6 @@ export default function AdminKeysPanel({ users }: Props) {
             <div className="flex justify-between items-center pt-2 border-t border-gray-200 mt-1">
               <span className="text-xs text-gray-500">{new Date(k.createdAt).toLocaleDateString()}</span>
               <div className="flex gap-3">
-                <button onClick={() => updateKeyProvider(k.id, k.provider)} className="text-purple-500 hover:underline text-sm">Provider</button>
                 <button onClick={() => toggleKey(k.id)} className={`text-sm font-medium ${k.enabled ? 'text-red-500 hover:underline' : 'text-green-600 hover:underline'}`}>
                   {k.enabled ? '禁用' : '启用'}
                 </button>
