@@ -19,6 +19,13 @@ export const config = {
   PRICE_WITHOUT_VIDEO: parseFloat(process.env.PRICE_WITHOUT_VIDEO || '46'),
   CORS_ORIGINS: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',').map(s => s.trim()) : '*',
   ADMIN_DEFAULT_PASSWORD: process.env.ADMIN_DEFAULT_PASSWORD || 'admin123',
+  // Base URL used to rewrite outward video URLs to self-hosted /v/{task_id}.mp4.
+  // Empty string disables rewriting (upstream URL passes through as before).
+  PUBLIC_BASE_URL: (process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, ''),
+  // Ark/Meitu signed video URLs expire 24h after upstream_finished_at.
+  // We subtract a small safety margin so a freshly-issued 302 Location never
+  // hands back a URL that's about to expire mid-download.
+  ARK_VIDEO_URL_TTL_MS: 24 * 60 * 60 * 1000 - 5 * 60 * 1000,
   MODEL_MAPPING: process.env.MODEL_MAPPING 
     ? JSON.parse(process.env.MODEL_MAPPING) 
     : {

@@ -14,6 +14,7 @@ import { concurrencyCache, keyConcurrencyCache } from '../services/concurrency.s
 import { getProvider } from '../providers/index.js';
 import { generateTaskId } from '../utils/taskId.util.js';
 import { attemptModerationFallback, isFallbackEligible } from '../utils/autoFallback.util.js';
+import { rewriteArkVideoUrl, computeVideoExpiresAt } from '../utils/videoUrl.util.js';
 import type { AppVariables } from '../types.js';
 
 export const proxyRoutes = new Hono<{ Variables: AppVariables }>();
@@ -252,6 +253,13 @@ export const getResultHandler = async (c: any) => {
     const durationMs = Date.now() - startTime;
     // Rewrite id in the response so clients only ever see our task id.
     const publicResponse: any = { ...result.arkResponse, id: publicTaskId };
+    // Capture the upstream-issued video URL before we rewrite it for the
+    // client. Used below to populate upstream_video_url on the terminal write.
+    const rawUpstreamVideoUrl: string | undefined = publicResponse.content?.video_url;
+    // Hide the upstream signed URL from the client — every succeeded poll
+    // returns a /v/{task_id}.mp4 self-URL regardless of whether this is the
+    // first terminal observation or a later re-poll.
+    rewriteArkVideoUrl(publicResponse);
 
     // Ark-equivalent CNY-per-million-token rate. Exposed uniformly on every
     // response (running, terminal, error-free) so clients can previsualize
@@ -367,6 +375,18 @@ export const getResultHandler = async (c: any) => {
           ...(finishedSec ? { upstreamFinishedAt: new Date(finishedSec * 1000) } : {}),
           ...(startedSec && finishedSec ? { taskDurationMs: (finishedSec - startedSec) * 1000 } : {}),
         };
+        // Capture raw upstream URL + compute expiry for the terminal write.
+        // publicResponse was already URL-rewritten above, so result_data will
+        // match what the client sees.
+        const videoFields = (normalizedStatus === 'succeeded' && rawUpstreamVideoUrl)
+          ? {
+              upstreamVideoUrl: rawUpstreamVideoUrl,
+              upstreamVideoExpiresAt: computeVideoExpiresAt(
+                logProvider,
+                timingFields.upstreamFinishedAt ?? existingLog.upstreamFinishedAt ?? null,
+              ),
+            }
+          : {};
         // Serialize AFTER rate + synthetic-token injection so the stored
         // result_data matches exactly what the client sees.
         const terminalResponseBody = JSON.stringify(publicResponse);
@@ -378,6 +398,7 @@ export const getResultHandler = async (c: any) => {
               ...(result.duration ? { videoDuration: result.duration } : {}),
               costYuan: cost,
               resultData: terminalResponseBody,
+              ...videoFields,
               ...(result.upstreamRaw !== undefined
                 ? { upstreamQueryRaw: JSON.stringify(result.upstreamRaw) }
                 : {}),

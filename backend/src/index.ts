@@ -21,6 +21,7 @@ import { adminRoutes } from './routes/admin.routes.js';
 import { tenantRoutes } from './routes/tenant.routes.js';
 import { proxyRoutes, createHandler, getResultHandler, cancelHandler } from './routes/proxy.routes.js';
 import { assetRoutes } from './routes/asset.routes.js';
+import { videoRoutes } from './routes/video.routes.js';
 import { proxyAuthMiddleware } from './middlewares/proxy.middleware.js';
 
 const app = new Hono<{ Variables: AppVariables }>();
@@ -56,6 +57,9 @@ app.route('/api/panel/admin', adminRoutes);
 app.route('/api/panel', tenantRoutes); 
 app.route('/api/v1/doubao', proxyRoutes);
 app.route('/api/v1/open', assetRoutes);
+// Public video redirect endpoint. Intentionally mounted outside /api so clients
+// (video players, <video src>) can use it directly without auth headers.
+app.route('/v', videoRoutes);
 app.post('/api/v3/contents/generations/tasks', proxyAuthMiddleware, createHandler);
 app.get('/api/v3/contents/generations/tasks/:id', proxyAuthMiddleware, getResultHandler);
 app.delete('/api/v3/contents/generations/tasks/:id', proxyAuthMiddleware, cancelHandler);
@@ -83,8 +87,11 @@ setupInitialAdmin().then(() => loadConcurrencyCache());
 // Cache static files for 2 hours
 app.use('/*', async (c, next) => {
   await next();
-  // Only set cache for non-API, successful responses with content
-  if (!c.req.path.startsWith('/api/')) {
+  // Only set cache for non-API, successful responses with content.
+  // Exclude /v/* so the video-redirect endpoint keeps its own private-cache
+  // header — we don't want shared caches hoarding signed upstream URLs.
+  const path = c.req.path;
+  if (!path.startsWith('/api/') && !path.startsWith('/v/')) {
     c.header('Cache-Control', 'public, max-age=7200');
   }
 });

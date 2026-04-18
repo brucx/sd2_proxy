@@ -8,6 +8,7 @@ import { getProvider } from '../providers/index.js';
 import { concurrencyCache, keyConcurrencyCache } from './concurrency.service.js';
 import { logger } from '../utils/logger.util.js';
 import { attemptModerationFallback, isFallbackEligible } from '../utils/autoFallback.util.js';
+import { rewriteArkVideoUrl, computeVideoExpiresAt } from '../utils/videoUrl.util.js';
 
 const CRON_BATCH_SIZE = 10;
 
@@ -81,6 +82,21 @@ const processPendingTask = async (log: any) => {
           ...(finishedSec ? { upstreamFinishedAt: new Date(finishedSec * 1000) } : {}),
           ...(startedSec && finishedSec ? { taskDurationMs: (finishedSec - startedSec) * 1000 } : {}),
         };
+        // Capture raw upstream URL before the Ark-shape snapshot gets its
+        // video_url rewritten to the self-hosted /v URL. NULL when no video
+        // (non-succeeded) or no content.
+        const rawUpstreamVideoUrl: string | undefined = result.arkResponse.content?.video_url;
+        const storedArkResponse: any = { ...result.arkResponse, id: log.taskId || result.arkResponse.id };
+        rewriteArkVideoUrl(storedArkResponse);
+        const videoFields = (normalizedStatus === 'succeeded' && rawUpstreamVideoUrl)
+          ? {
+              upstreamVideoUrl: rawUpstreamVideoUrl,
+              upstreamVideoExpiresAt: computeVideoExpiresAt(
+                log.provider || 'meitu',
+                timingFields.upstreamFinishedAt ?? log.upstreamFinishedAt ?? null,
+              ),
+            }
+          : {};
         await db.transaction(async (tx) => {
           const updateResult = await tx.update(schema.usageLogs)
             .set({
@@ -88,8 +104,9 @@ const processPendingTask = async (log: any) => {
               completionTokens: result.completionTokens || 0,
               ...(result.duration ? { videoDuration: result.duration } : {}),
               costYuan: cost,
-              // Rewrite id to our own task id before persisting the snapshot.
-              resultData: JSON.stringify({ ...result.arkResponse, id: log.taskId || result.arkResponse.id }),
+              // Persist the Ark-shape snapshot with our task id and self URL.
+              resultData: JSON.stringify(storedArkResponse),
+              ...videoFields,
               ...timingFields,
               updatedAt: new Date()
             })
