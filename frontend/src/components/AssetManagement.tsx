@@ -70,9 +70,10 @@ export default function AssetManagement() {
         SortOrder: 'Desc',
       };
       const res = await api.post('/admin/assets/list', body);
-      setAssets(res.data.Items || []);
-      setAssetTotal(res.data.TotalCount || 0);
-      setAssetPage(res.data.PageNumber || page);
+      const result = res.data?.Result || res.data || {};
+      setAssets(result.Items || []);
+      setAssetTotal(result.TotalCount || result.Total || 0);
+      setAssetPage(result.PageNumber || result.PageNum || page);
     } catch (err: any) {
       console.error('ListAssets error:', err);
       setAssets([]);
@@ -92,8 +93,9 @@ export default function AssetManagement() {
         ...(createName.trim() ? { Name: createName.trim() } : {}),
       };
       const res = await api.post('/admin/assets/create', body);
-      setCreateResult(res.data);
-      if (res.data.Id) {
+      const result = res.data?.Result || res.data || {};
+      setCreateResult(result);
+      if (result.Id) {
         setCreateUrl('');
         setCreateName('');
       }
@@ -110,7 +112,8 @@ export default function AssetManagement() {
     setQueryResult(null);
     try {
       const res = await api.post('/admin/assets/get', { Id: queryId.trim() });
-      setQueryResult(res.data);
+      const result = res.data?.Result || res.data || {};
+      setQueryResult(result);
     } catch (err: any) {
       setQueryResult(err.response?.data || { error: 'Request failed' } as any);
     }
@@ -128,9 +131,10 @@ export default function AssetManagement() {
         sortOrder: 'desc',
       };
       const res = await api.post('/admin/assets/public', body);
-      setPublicAssets(res.data.Items || []);
-      setPublicTotal(res.data.TotalCount || 0);
-      setPublicPage(res.data.PageNum || page);
+      const result = res.data?.Result || res.data || {};
+      setPublicAssets(result.Items || []);
+      setPublicTotal(result.Total || result.TotalCount || 0);
+      setPublicPage(result.PageNum || result.PageNumber || page);
     } catch (err: any) {
       console.error('ListMediaAssetGroup error:', err);
       setPublicAssets([]);
