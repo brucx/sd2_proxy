@@ -16,7 +16,8 @@ function inferMode(body: any): 'text-to-video' | 'image-to-video' | 'reference-t
   const hasVideo = contents.some((c: any) => c.type === 'video_url' || c.type === 'video')
     || (Array.isArray(body.video_urls) && body.video_urls.length > 0);
 
-  const hasAudio = Array.isArray(body.audio_urls) && body.audio_urls.length > 0;
+  const hasAudio = contents.some((c: any) => c.type === 'audio_url' || c.type === 'audio')
+    || (Array.isArray(body.audio_urls) && body.audio_urls.length > 0);
 
   if (hasVideo || hasAudio) return 'reference-to-video';
   if (hasImage) return 'image-to-video';
@@ -48,11 +49,17 @@ function translateCreateBody(body: any, evolinkModel: string): any {
 
   const evolinkBody: any = { model: evolinkModel, prompt };
 
+  const audioUrls: string[] = [];
+  for (const c of contents) {
+    if ((c.type === 'audio_url' || c.type === 'audio') && (c.audio_url?.url || c.url)) {
+      audioUrls.push(c.audio_url?.url || c.url);
+    }
+  }
+  if (Array.isArray(body.audio_urls)) audioUrls.push(...body.audio_urls);
+
   if (imageUrls.length > 0) evolinkBody.image_urls = imageUrls;
   if (videoUrls.length > 0) evolinkBody.video_urls = videoUrls;
-  if (Array.isArray(body.audio_urls) && body.audio_urls.length > 0) {
-    evolinkBody.audio_urls = body.audio_urls;
-  }
+  if (audioUrls.length > 0) evolinkBody.audio_urls = audioUrls;
 
   if (body.duration !== undefined && body.duration !== null) evolinkBody.duration = body.duration;
 
