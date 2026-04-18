@@ -29,6 +29,7 @@ function Playground() {
   const [response, setResponse] = useState<any>(null);
   const [taskId, setTaskId] = useState('');
   const [loading, setLoading] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
   const [showCurl, setShowCurl] = useState(true);
@@ -47,8 +48,15 @@ function Playground() {
 
   const buildCurlGetResult = () => {
     const key = apiKey || 'YOUR_API_KEY';
-    const tid = taskId || 'TASK_ID';
+    const tid = taskId || 'cgt-YYYYMMDDHHMMSS-xxxxx';
     return `curl -X GET '${baseUrl}/api/v3/contents/generations/tasks/${tid}' \\
+  -H 'Authorization: Bearer ${key}'`;
+  };
+
+  const buildCurlCancel = () => {
+    const key = apiKey || 'YOUR_API_KEY';
+    const tid = taskId || 'cgt-YYYYMMDDHHMMSS-xxxxx';
+    return `curl -X DELETE '${baseUrl}/api/v3/contents/generations/tasks/${tid}' \\
   -H 'Authorization: Bearer ${key}'`;
   };
 
@@ -68,35 +76,37 @@ function Playground() {
   }, []);
 
   const sampleCreateResponse = {
-    id: "task_abcdefg1234567"
+    id: "cgt-20260418112930-j7ule",
+    model: "doubao-seedance-2-0-260128",
+    status: "queued",
+    error: null
   };
 
   const sampleGetResultResponse = {
-    id: "task_abcdefg1234567",
+    id: "cgt-20260418112930-j7ule",
     model: "doubao-seedance-2-0-260128",
     status: "succeeded",
     error: null,
+    created_at: 1776511770,
+    updated_at: 1776511897,
     content: {
-      video_url: "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedance-2-0/xxx.mp4?X-Tos-Algorithm=...",
-      last_frame_url: null,
-      file_url: null
+      video_url: "https://.../xxx.mp4"
     },
-    usage: { completion_tokens: 108900 },
+    seed: 25265,
+    resolution: "720p",
+    ratio: "16:9",
+    duration: 5,
     framespersecond: 24,
-    created_at: 1774105394,
-    updated_at: 1774105570,
-    seed: 52050,
-    revised_prompt: null,
+    generate_audio: true,
     service_tier: "default",
     execution_expires_after: 172800,
-    generate_audio: true,
-    duration: 5,
-    ratio: "16:9",
-    resolution: "720p",
-    draft: false,
-    draft_task_id: null,
-    _request_id: ""
+    usage: {
+      completion_tokens: 108900,
+      total_tokens: 108900
+    }
   };
+
+  const sampleCancelResponse = 'HTTP 204 No Content';
 
   const addImage = () => {
     setRefImages(prev => [...prev, { id: nextId++, url: '', role: 'reference_image' }]);
@@ -200,6 +210,21 @@ function Playground() {
       setResponse(err.response?.data || err.message);
     }
     setLoading(false);
+  };
+
+  const handleCancel = async () => {
+    if (!taskId.trim()) return;
+    setCancelLoading(true);
+    try {
+      const res = await axios.delete(
+        `/api/v3/contents/generations/tasks/${taskId.trim()}`,
+        { headers: { Authorization: `Bearer ${apiKey}` } }
+      );
+      setResponse(res.status === 204 ? { note: 'Task cancelled / record deleted (204 No Content)' } : res.data);
+    } catch (err: any) {
+      setResponse(err.response?.data || err.message);
+    }
+    setCancelLoading(false);
   };
 
   return (
@@ -565,21 +590,33 @@ function Playground() {
         {/* Check Result */}
         <div className="bg-white p-4 sm:p-5 rounded-xl shadow-sm space-y-3">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Check Result</h3>
-          <p className="text-xs text-amber-600">⚠️ 同一任务ID查询间隔需不少于 3 秒</p>
+          <p className="text-xs text-amber-600">⚠️ 同一任务 ID 查询间隔需不少于 3 秒</p>
           <input
             type="text"
             value={taskId}
             onChange={(e) => setTaskId(e.target.value)}
             className="w-full px-3 py-2 border border-gray-200 rounded-md font-mono text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all"
-            placeholder="Task ID"
+            placeholder="cgt-YYYYMMDDHHMMSS-xxxxx"
           />
-          <button
-            onClick={handleGetResult}
-            disabled={loading}
-            className="w-full bg-green-600 text-white px-4 py-2.5 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors font-medium shadow-sm"
-          >
-            {loading ? 'Polling...' : '📡 Get Result'}
-          </button>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              onClick={handleGetResult}
+              disabled={loading || !taskId.trim()}
+              className="bg-green-600 text-white px-4 py-2.5 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors font-medium shadow-sm"
+            >
+              {loading ? 'Polling...' : '📡 Get Result'}
+            </button>
+            <button
+              onClick={handleCancel}
+              disabled={cancelLoading || !taskId.trim()}
+              className="bg-red-500 text-white px-4 py-2.5 rounded-lg hover:bg-red-600 disabled:opacity-50 transition-colors font-medium shadow-sm"
+            >
+              {cancelLoading ? 'Cancelling...' : '🗑️ Cancel / Delete'}
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 leading-relaxed">
+            <strong>Cancel</strong>：任务处于 queued/running 时会取消；已终结（succeeded/failed/expired）则删除记录；返回 204 No Content。
+          </p>
         </div>
 
         {/* Response */}
@@ -628,6 +665,18 @@ function Playground() {
                   {buildCurlGetResult()}
                 </pre>
               </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-medium text-gray-600">取消/删除任务 (DELETE /tasks/:id)</span>
+                  <button
+                    onClick={() => copyCurl(buildCurlCancel())}
+                    className="text-xs px-2 py-0.5 rounded bg-gray-100 hover:bg-blue-100 text-gray-500 hover:text-blue-600 transition-colors"
+                  >{curlCopied ? '✅ 已复制' : '📋 复制'}</button>
+                </div>
+                <pre className="bg-gray-900 text-green-400 p-3 rounded-lg overflow-x-auto text-xs leading-relaxed whitespace-pre-wrap">
+                  {buildCurlCancel()}
+                </pre>
+              </div>
             </div>
           )}
         </div>
@@ -654,6 +703,20 @@ function Playground() {
                 <pre className="bg-gray-900 text-blue-300 p-3 rounded-lg overflow-x-auto text-xs leading-relaxed max-h-80 overflow-y-auto whitespace-pre-wrap">
                   {JSON.stringify(sampleGetResultResponse, null, 2)}
                 </pre>
+              </div>
+              <div>
+                <span className="text-xs font-medium text-gray-600 block mb-1">取消/删除任务 DELETE /tasks/:id 返回：</span>
+                <pre className="bg-gray-900 text-amber-300 p-3 rounded-lg overflow-x-auto text-xs leading-relaxed whitespace-pre-wrap">
+                  {sampleCancelResponse}
+                </pre>
+                <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                  status 枚举：<code className="bg-gray-100 px-1 rounded">queued</code> /{' '}
+                  <code className="bg-gray-100 px-1 rounded">running</code> /{' '}
+                  <code className="bg-gray-100 px-1 rounded">succeeded</code> /{' '}
+                  <code className="bg-gray-100 px-1 rounded">failed</code> /{' '}
+                  <code className="bg-gray-100 px-1 rounded">cancelled</code> /{' '}
+                  <code className="bg-gray-100 px-1 rounded">expired</code>
+                </p>
               </div>
             </div>
           )}
