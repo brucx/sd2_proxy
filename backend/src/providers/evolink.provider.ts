@@ -88,12 +88,21 @@ function preNormalizeEvolink(data: any): any {
   }
   if (data.quality && out.resolution === undefined) out.resolution = data.quality;
   if (data.aspect_ratio && out.ratio === undefined) out.ratio = data.aspect_ratio;
-  if (data.task_info?.video_duration != null && out.duration == null) {
-    out.duration = data.task_info.video_duration;
-  }
   // Evolink uses `created` (unix seconds); align with Ark's `created_at`.
   if (out.created_at == null && typeof data.created === 'number') {
     out.created_at = data.created;
+  }
+  // Evolink overloads `task_info.video_duration` to mean upstream task execution
+  // time in seconds (not output video length — that's driven by the request
+  // `duration`). Translate it into Ark's `updated_at` so the route layer's
+  // timing bookkeeping (upstream_started_at / upstream_finished_at /
+  // task_duration_ms) works uniformly across providers.
+  if (
+    out.updated_at == null
+    && typeof out.created_at === 'number'
+    && typeof data.task_info?.video_duration === 'number'
+  ) {
+    out.updated_at = out.created_at + data.task_info.video_duration;
   }
   return out;
 }
@@ -163,7 +172,6 @@ class EvolinkProvider implements UpstreamProvider {
       status: toLifecycleStatus(normalizeStatus(data.status)),
       arkResponse,
       statusCode: upstreamRes.status,
-      duration: data.task_info?.video_duration,
     };
   }
 
