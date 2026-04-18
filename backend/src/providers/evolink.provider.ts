@@ -80,7 +80,10 @@ function translateCreateBody(body: any, evolinkModel: string): any {
 
 // Shape Evolink task payload close enough to Ark that the generic normalizer
 // can finish the job. Evolink uses `results[]`, `quality`, `aspect_ratio`.
-function preNormalizeEvolink(data: any): any {
+// `requestBody` (the original create-time request) lets us back-fill Ark
+// echo fields (resolution/ratio/duration/generate_audio/...) that Evolink
+// doesn't return — required for client compatibility with the Ark response.
+function preNormalizeEvolink(data: any, requestBody?: any): any {
   if (!data || typeof data !== 'object') return data;
   const out: any = { ...data };
   if (Array.isArray(data.results) && data.results.length > 0) {
@@ -104,6 +107,46 @@ function preNormalizeEvolink(data: any): any {
   ) {
     out.updated_at = out.created_at + data.task_info.video_duration;
   }
+
+  // Ark-compatibility back-fill. Evolink omits these from its task responses,
+  // so synthesize them from the original request + Ark defaults
+  // (see docs/ark/get.md, docs/ark/create.md). Lets clients written against
+  // the Ark response shape consume Evolink results unchanged.
+  const req = requestBody && typeof requestBody === 'object' ? requestBody : {};
+  if (out.resolution === undefined) {
+    out.resolution = req.resolution || req.quality || '720p';
+  }
+  if (out.ratio === undefined) {
+    out.ratio = req.ratio || req.aspect_ratio || '16:9';
+  }
+  if (out.duration === undefined) {
+    out.duration = typeof req.duration === 'number' ? req.duration : 5;
+  }
+  if (out.framespersecond === undefined) out.framespersecond = 24;
+  if (out.generate_audio === undefined) {
+    out.generate_audio = typeof req.generate_audio === 'boolean' ? req.generate_audio : true;
+  }
+  if (out.service_tier === undefined) {
+    out.service_tier = data.usage?.user_group || req.service_tier || 'default';
+  }
+  if (out.execution_expires_after === undefined) {
+    out.execution_expires_after = typeof req.execution_expires_after === 'number'
+      ? req.execution_expires_after
+      : 172800;
+  }
+
+  // Ensure usage exists with Ark-shape token fields. Real values are filled in
+  // by the route layer for terminal evolink tasks (synthetic tokens reverse-
+  // mapped from credit-based cost — see proxy.routes.ts).
+  const upstreamUsage = data.usage && typeof data.usage === 'object' ? data.usage : {};
+  const ct = typeof upstreamUsage.completion_tokens === 'number' ? upstreamUsage.completion_tokens : 0;
+  const tt = typeof upstreamUsage.total_tokens === 'number' ? upstreamUsage.total_tokens : ct;
+  out.usage = {
+    completion_tokens: ct,
+    total_tokens: tt,
+    ...(upstreamUsage.tool_usage ? { tool_usage: upstreamUsage.tool_usage } : {}),
+  };
+
   return out;
 }
 
@@ -142,7 +185,7 @@ class EvolinkProvider implements UpstreamProvider {
 
     const data: any = await upstreamRes.json();
     const upstreamTaskId = data.id || '';
-    const arkResponse = normalizeToArkResponse(preNormalizeEvolink(data), {
+    const arkResponse = normalizeToArkResponse(preNormalizeEvolink(data, body), {
       id: upstreamTaskId,
       model: userModel,
     });
@@ -157,14 +200,14 @@ class EvolinkProvider implements UpstreamProvider {
     };
   }
 
-  async queryTask(upstreamTaskId: string, userModel?: string): Promise<QueryTaskResult> {
+  async queryTask(upstreamTaskId: string, userModel?: string, requestBody?: any): Promise<QueryTaskResult> {
     const upstreamRes = await fetch(`${config.EVOLINK_URL}/v1/tasks/${upstreamTaskId}`, {
       method: 'GET',
       headers: { 'Authorization': `Bearer ${config.EVOLINK_API_KEY}` },
     });
 
     const data: any = await upstreamRes.json();
-    const arkResponse = normalizeToArkResponse(preNormalizeEvolink(data), {
+    const arkResponse = normalizeToArkResponse(preNormalizeEvolink(data, requestBody), {
       id: upstreamTaskId,
       model: userModel,
     });

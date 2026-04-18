@@ -31,6 +31,8 @@ export interface CancelTaskResult {
 export interface UpstreamProvider {
   name: 'meitu' | 'evolink' | 'ark';
   createTask(body: any, userModel: string): Promise<CreateTaskResult>;
-  queryTask(upstreamTaskId: string, userModel?: string): Promise<QueryTaskResult>;
+  // requestBody: original create-time request, threaded through so providers
+  // (e.g. Evolink) can synthesize Ark-shape echo fields the upstream omits.
+  queryTask(upstreamTaskId: string, userModel?: string, requestBody?: any): Promise<QueryTaskResult>;
   cancelTask(upstreamTaskId: string): Promise<CancelTaskResult>;
 }

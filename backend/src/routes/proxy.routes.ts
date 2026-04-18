@@ -231,15 +231,17 @@ export const getResultHandler = async (c: any) => {
     const logProvider = existingLog.provider || 'meitu';
 
     // Parse the original create body to recover user-facing model name (Meitu
-    // returns the endpoint id, not the model name).
+    // returns the endpoint id, not the model name) and pass it to the provider
+    // so Evolink can synthesize Ark-shape echo fields its API omits.
     let userModel: string | undefined;
+    let parsedCreateBody: any = null;
     try {
-      const parsed = existingLog.requestBody ? JSON.parse(existingLog.requestBody) : null;
-      if (parsed?.model) userModel = parsed.model;
+      parsedCreateBody = existingLog.requestBody ? JSON.parse(existingLog.requestBody) : null;
+      if (parsedCreateBody?.model) userModel = parsedCreateBody.model;
     } catch { /* ignore malformed body */ }
 
     const upstream = getProvider(logProvider);
-    const result = await upstream.queryTask(upstreamId, userModel);
+    const result = await upstream.queryTask(upstreamId, userModel, parsedCreateBody);
 
     const durationMs = Date.now() - startTime;
     // Rewrite id in the response so clients only ever see our task id.
