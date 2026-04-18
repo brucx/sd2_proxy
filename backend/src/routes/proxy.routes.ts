@@ -4,6 +4,11 @@ import * as schema from '../db/schema.js';
 import { eq, and, sql } from 'drizzle-orm';
 import { config } from '../config.js';
 import { calculateCost, detectVideoInput } from '../utils/cost.util.js';
+import {
+  isFastModel,
+  lookupArkPricePerMillion,
+  reverseTokensFromCost,
+} from '../utils/arkPricing.util.js';
 import { proxyAuthMiddleware } from '../middlewares/proxy.middleware.js';
 import { concurrencyCache, keyConcurrencyCache } from '../services/concurrency.service.js';
 import { getProvider } from '../providers/index.js';
@@ -17,6 +22,23 @@ export const createHandler = async (c: any) => {
   const body = await c.req.json();
   const startTime = Date.now();
   const clientIp = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown';
+
+  // Input-only validation: seedance-2.0-fast does not support 1080p output on
+  // any upstream (see docs/ark/pricing.md, docs/evolink/evolink.md). Reject
+  // early before touching balance / concurrency / DB.
+  const requestedQuality = (body.resolution || body.quality || '').toLowerCase();
+  if (requestedQuality === '1080p' && isFastModel(body.model)) {
+    return c.json(
+      {
+        error: {
+          code: 'unsupported_resolution',
+          message: '1080p output is not supported on seedance-2.0-fast models.',
+          type: 'invalid_request_error',
+        },
+      },
+      400,
+    );
+  }
 
   const userId = keyRecord.userId;
   const userRecord = await db.select({
@@ -99,9 +121,24 @@ export const createHandler = async (c: any) => {
     }
 
     // Rewrite the response id to our own task id so clients never see the upstream id.
-    const publicResponse = taskId
+    const publicResponse: any = taskId
       ? { ...result.arkResponse, id: taskId }
       : result.arkResponse;
+
+    // Expose the Ark-equivalent CNY-per-million-token rate so clients can
+    // previsualize cost as `tokens × rate / 1e6` uniformly across providers.
+    const createRate = lookupArkPricePerMillion({
+      model: userModel,
+      hasVideo: isVideoInput,
+      quality: body.resolution || body.quality,
+    });
+    if (createRate > 0) {
+      publicResponse.usage = {
+        ...(publicResponse.usage ?? {}),
+        rate_cny_per_million: createRate,
+      };
+    }
+
     const responseBody = JSON.stringify(publicResponse);
 
     db.insert(schema.requestLogs).values({
@@ -205,8 +242,22 @@ export const getResultHandler = async (c: any) => {
 
     const durationMs = Date.now() - startTime;
     // Rewrite id in the response so clients only ever see our task id.
-    const publicResponse = { ...result.arkResponse, id: publicTaskId };
-    const responseBody = JSON.stringify(publicResponse);
+    const publicResponse: any = { ...result.arkResponse, id: publicTaskId };
+
+    // Ark-equivalent CNY-per-million-token rate. Exposed uniformly on every
+    // response (running, terminal, error-free) so clients can previsualize
+    // cost as `completion_tokens × rate / 1e6` across all providers.
+    const arkRate = lookupArkPricePerMillion({
+      model: userModel,
+      hasVideo: existingLog.hasVideoInput ?? false,
+      quality: existingLog.videoQuality || '720p',
+    });
+    if (arkRate > 0) {
+      publicResponse.usage = {
+        ...(publicResponse.usage ?? {}),
+        rate_cny_per_million: arkRate,
+      };
+    }
 
     if (result.statusCode >= 200 && result.statusCode < 300 && publicResponse.status) {
       const normalizedStatus = publicResponse.status;
@@ -224,6 +275,27 @@ export const getResultHandler = async (c: any) => {
             model: userModel,
             ...(typeof storedCredits === 'number' ? { credits: storedCredits } : {}),
           });
+
+          // Evolink charges in credits. Reverse-map the actual CNY cost into
+          // an Ark-equivalent token count so the client sees a uniform
+          // `cost = tokens × rate / 1e6` contract. Billing is still driven by
+          // credits_reserved; these tokens are display-only.
+          if (logProvider === 'evolink') {
+            const synthetic = reverseTokensFromCost({
+              costYuan: parseFloat(cost),
+              model: userModel,
+              hasVideo: existingLog.hasVideoInput ?? false,
+              quality: existingLog.videoQuality || '720p',
+            });
+            if (synthetic > 0) {
+              result.completionTokens = synthetic;
+              publicResponse.usage = {
+                ...(publicResponse.usage ?? {}),
+                completion_tokens: synthetic,
+                total_tokens: synthetic,
+              };
+            }
+          }
         }
 
         let statusUpdated = false;
@@ -239,6 +311,9 @@ export const getResultHandler = async (c: any) => {
           ...(finishedSec ? { upstreamFinishedAt: new Date(finishedSec * 1000) } : {}),
           ...(startedSec && finishedSec ? { taskDurationMs: (finishedSec - startedSec) * 1000 } : {}),
         };
+        // Serialize AFTER rate + synthetic-token injection so the stored
+        // result_data matches exactly what the client sees.
+        const terminalResponseBody = JSON.stringify(publicResponse);
         await db.transaction(async (tx) => {
           const updateResult = await tx.update(schema.usageLogs)
             .set({
@@ -246,7 +321,7 @@ export const getResultHandler = async (c: any) => {
               completionTokens: result.completionTokens || 0,
               ...(result.duration ? { videoDuration: result.duration } : {}),
               costYuan: cost,
-              resultData: responseBody,
+              resultData: terminalResponseBody,
               ...(result.upstreamRaw !== undefined
                 ? { upstreamQueryRaw: JSON.stringify(result.upstreamRaw) }
                 : {}),
@@ -280,6 +355,9 @@ export const getResultHandler = async (c: any) => {
       }
     }
 
+    // Re-serialize after all response mutations (rate + evolink synthetic
+    // tokens) so the request log captures what the client actually receives.
+    const responseBody = JSON.stringify(publicResponse);
     db.insert(schema.requestLogs).values({
       userId: keyRecord.userId,
       keyId: keyRecord.id,

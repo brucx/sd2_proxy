@@ -30,6 +30,7 @@ export interface ArkTaskResponse {
     completion_tokens?: number;
     total_tokens?: number;
     tool_usage?: { web_search?: number };
+    rate_cny_per_million?: number; // Ark CNY-per-million-token rate for this task spec (non-standard field, see docs/ark/pricing.md).
   } | null;
 }
 
