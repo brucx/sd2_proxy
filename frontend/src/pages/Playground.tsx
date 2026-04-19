@@ -454,6 +454,7 @@ function Playground() {
           >
             {showDocs ? '📖 隐藏文档' : '📖 参数文档'}
           </button>
+          <Link to="/docs" className="text-emerald-600 hover:underline text-sm sm:text-base">API Docs</Link>
           <Link to="/dashboard" className="text-blue-600 hover:underline text-sm sm:text-base">Back to Dashboard</Link>
         </div>
       </div>

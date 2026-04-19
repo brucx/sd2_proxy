@@ -88,6 +88,7 @@ function Dashboard() {
           <span className="text-sm text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">{localStorage.getItem('username') || ''}</span>
         </div>
         <div className="flex flex-wrap gap-4">
+          <Link to="/docs" className="text-emerald-600 hover:underline font-medium">API Docs</Link>
           <Link to="/playground" className="text-blue-600 hover:underline font-medium">API Playground</Link>
           <button onClick={() => setShowChangePwd(!showChangePwd)} className="text-indigo-600 hover:underline font-medium">修改密码</button>
           <button onClick={logout} className="text-red-500 hover:underline font-medium">Logout</button>

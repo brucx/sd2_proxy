@@ -85,7 +85,7 @@ startCronJobs();
 setupInitialAdmin().then(() => loadConcurrencyCache());
 
 // Cache static files for 2 hours
-const NO_CACHE_PAGES = new Set(['/', '/login', '/dashboard', '/playground']);
+const NO_CACHE_PAGES = new Set(['/', '/login', '/dashboard', '/playground', '/docs/api']);
 app.use('/*', async (c, next) => {
   await next();
   const path = c.req.path;

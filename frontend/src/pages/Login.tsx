@@ -63,6 +63,14 @@ function Login() {
             Login
           </button>
         </form>
+        <div className="mt-5 border-t pt-4 text-center">
+          <a
+            href="/docs/api"
+            className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
+          >
+            查看 API 对接文档
+          </a>
+        </div>
       </div>
     </div>
   );
