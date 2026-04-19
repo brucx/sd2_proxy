@@ -8,6 +8,7 @@ import { getProvider } from '../providers/index.js';
 import { concurrencyCache, keyConcurrencyCache } from './concurrency.service.js';
 import { logger } from '../utils/logger.util.js';
 import { attemptModerationFallback, isFallbackEligible } from '../utils/autoFallback.util.js';
+import { reverseTokensFromCost } from '../utils/arkPricing.util.js';
 import { rewriteArkVideoUrl, computeVideoExpiresAt } from '../utils/videoUrl.util.js';
 import { maybeKickoffUpload, retryFailedUploads } from './videoOffload.service.js';
 import {
@@ -77,6 +78,28 @@ const processPendingTask = async (log: any) => {
             model: userModel,
             ...(typeof storedCredits === 'number' ? { credits: storedCredits } : {}),
           });
+
+          // Mirror proxy.routes.ts: reverse-map evolink's credit-based cost
+          // into an Ark-equivalent token count so DB `completion_tokens` and
+          // the stored `result_data.usage` stay consistent regardless of
+          // whether the route handler or the cron finalizes this task.
+          if ((log.provider || 'meitu') === 'evolink') {
+            const synthetic = reverseTokensFromCost({
+              costYuan: parseFloat(cost),
+              model: userModel,
+              hasVideo: log.hasVideoInput ?? false,
+              quality: log.videoQuality || '720p',
+            });
+            if (synthetic > 0) {
+              result.completionTokens = synthetic;
+              const existingUsage = (result.arkResponse as any).usage ?? {};
+              (result.arkResponse as any).usage = {
+                ...existingUsage,
+                completion_tokens: synthetic,
+                total_tokens: synthetic,
+              };
+            }
+          }
         }
         
         // Optimistic lock: only update if status is 'pending' or 'expired' to allow recovery
