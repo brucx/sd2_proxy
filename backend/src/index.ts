@@ -98,7 +98,7 @@ app.use('/*', async (c, next) => {
   }
   // Exclude /api/* (handled above) and /v/* (has its own private-cache header)
   if (!path.startsWith('/api/') && !path.startsWith('/v/')) {
-    c.header('Cache-Control', 'public, max-age=7200');
+    c.header('Cache-Control', 'public, max-age=31536000, immutable');
   }
 });
 
