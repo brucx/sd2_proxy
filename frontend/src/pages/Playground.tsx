@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
 
@@ -7,6 +7,29 @@ interface RefItem {
   url: string;
   role: string;
 }
+
+interface AssetItem {
+  Id: string;
+  Name?: string;
+  URL?: string;
+  AssetType?: string;
+  GroupId?: string;
+  Status?: string;
+  Error?: { Code?: string; Message?: string };
+  ProjectName?: string;
+  CreateTime?: string;
+  UpdateTime?: string;
+}
+
+interface PublicAssetGroup {
+  SID: string;
+  Title: string;
+  Description: string;
+  Score?: number;
+  Content?: any;
+}
+
+type AssetTab = 'list' | 'create' | 'public';
 
 let nextId = 1;
 
@@ -36,7 +59,199 @@ function Playground() {
   const [showResponseExample, setShowResponseExample] = useState(true);
   const [curlCopied, setCurlCopied] = useState(false);
 
+  // ── Asset Panel State ──
+  const [showAssets, setShowAssets] = useState(false);
+  const [assetTab, setAssetTab] = useState<AssetTab>('list');
+  const [assetList, setAssetList] = useState<AssetItem[]>([]);
+  const [assetLoading, setAssetLoading] = useState(false);
+  const [assetPage, setAssetPage] = useState(1);
+  const [assetTotal, setAssetTotal] = useState(0);
+  const assetPageSize = 10;
+  const [assetStatusFilter, setAssetStatusFilter] = useState<string[]>([]);
+  // Create asset
+  const [createUrl, setCreateUrl] = useState('');
+  const [createName, setCreateName] = useState('');
+  const [createType, setCreateType] = useState('Image');
+  const [createAssetLoading, setCreateAssetLoading] = useState(false);
+  const [createAssetResult, setCreateAssetResult] = useState<any>(null);
+  // Query single asset
+  const [queryAssetId, setQueryAssetId] = useState('');
+  const [queryAssetResult, setQueryAssetResult] = useState<AssetItem | null>(null);
+  const [queryAssetLoading, setQueryAssetLoading] = useState(false);
+  // Public assets
+  const [publicAssets, setPublicAssets] = useState<PublicAssetGroup[]>([]);
+  const [publicLoading, setPublicLoading] = useState(false);
+  const [publicPage, setPublicPage] = useState(1);
+  const [publicTotal, setPublicTotal] = useState(0);
+  const publicPageSize = 12;
+  // Clipboard feedback
+  const [assetCopiedId, setAssetCopiedId] = useState<string | null>(null);
+
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+
+  // ── Asset API helpers ──
+  const assetApi = useCallback(async (path: string, body: any) => {
+    return axios.post(`/api/v1/open${path}`, body, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+  }, [apiKey]);
+
+  const fetchAssetList = useCallback(async (page = 1) => {
+    if (!apiKey) return;
+    setAssetLoading(true);
+    try {
+      const body: any = {
+        Filter: {
+          GroupType: 'AIGC',
+          ...(assetStatusFilter.length > 0 ? { Statuses: assetStatusFilter } : {}),
+        },
+        PageNumber: page,
+        PageSize: assetPageSize,
+        SortBy: 'CreateTime',
+        SortOrder: 'Desc',
+      };
+      const res = await assetApi('/ListAssets', body);
+      const result = res.data?.Result || {};
+      setAssetList(result.Items || []);
+      setAssetTotal(result.TotalCount || 0);
+      setAssetPage(result.PageNumber || page);
+    } catch {
+      setAssetList([]);
+    }
+    setAssetLoading(false);
+  }, [apiKey, assetStatusFilter, assetApi]);
+
+  const handleCreateAsset = useCallback(async () => {
+    if (!createUrl.trim() || !apiKey) return;
+    setCreateAssetLoading(true);
+    setCreateAssetResult(null);
+    try {
+      const body: any = {
+        URL: createUrl.trim(),
+        AssetType: createType,
+        ...(createName.trim() ? { Name: createName.trim() } : {}),
+      };
+      const res = await assetApi('/CreateAsset', body);
+      const result = res.data?.Result || res.data || {};
+      setCreateAssetResult(result);
+      if (result.Id) {
+        setCreateUrl('');
+        setCreateName('');
+        // Auto-refresh list
+        fetchAssetList(1);
+      }
+    } catch (err: any) {
+      setCreateAssetResult(err.response?.data || { error: 'Request failed' });
+    }
+    setCreateAssetLoading(false);
+  }, [apiKey, createUrl, createType, createName, assetApi, fetchAssetList]);
+
+  const handleQueryAsset = useCallback(async () => {
+    if (!queryAssetId.trim() || !apiKey) return;
+    setQueryAssetLoading(true);
+    setQueryAssetResult(null);
+    try {
+      const res = await assetApi('/GetAsset', { Id: queryAssetId.trim() });
+      const result = res.data?.Result || res.data || {};
+      setQueryAssetResult(result);
+    } catch (err: any) {
+      setQueryAssetResult(err.response?.data || { error: 'Request failed' } as any);
+    }
+    setQueryAssetLoading(false);
+  }, [apiKey, queryAssetId, assetApi]);
+
+  const fetchPublicAssets = useCallback(async (page = 1) => {
+    if (!apiKey) return;
+    setPublicLoading(true);
+    try {
+      const body: any = {
+        pageNum: page,
+        pageSize: publicPageSize,
+        sortBy: 'score',
+        sortOrder: 'desc',
+      };
+      const res = await assetApi('/ListMediaAssetGroup', body);
+      const result = res.data?.Result || res.data || {};
+      const rawItems = result.Items || [];
+      const formatted = rawItems.map((item: any) => item.AssetGroup || item);
+      setPublicAssets(formatted);
+      setPublicTotal(result.Total || result.TotalCount || 0);
+      setPublicPage(result.PageNum || result.PageNumber || page);
+    } catch {
+      setPublicAssets([]);
+    }
+    setPublicLoading(false);
+  }, [apiKey, assetApi]);
+
+  // Auto-load asset list when panel opens
+  useEffect(() => {
+    if (showAssets && apiKey) {
+      if (assetTab === 'list') fetchAssetList(1);
+      if (assetTab === 'public') fetchPublicAssets(1);
+    }
+  }, [showAssets, assetTab]);
+
+  // Insert asset://ID into the appropriate ref media input
+  const addRefFromAsset = useCallback((assetId: string, assetType?: string) => {
+    const url = `asset://${assetId}`;
+    const entry: RefItem = { id: nextId++, url, role: '' };
+    if (assetType === 'Image') {
+      entry.role = 'reference_image';
+      setRefImages(prev => [...prev, entry]);
+    } else if (assetType === 'Video') {
+      entry.role = 'reference_video';
+      setRefVideos(prev => [...prev, entry]);
+    } else if (assetType === 'Audio') {
+      entry.role = 'reference_audio';
+      setRefAudios(prev => [...prev, entry]);
+    } else {
+      // Default to image if type unknown
+      entry.role = 'reference_image';
+      setRefImages(prev => [...prev, entry]);
+    }
+  }, []);
+
+  const copyAssetId = useCallback(async (id: string) => {
+    const text = `asset://${id}`;
+    try { await navigator.clipboard.writeText(text); }
+    catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    setAssetCopiedId(id);
+    setTimeout(() => setAssetCopiedId(null), 1500);
+  }, []);
+
+  // ── Asset Badge helpers ──
+  const assetStatusBadge = (status?: string) => {
+    const map: Record<string, string> = {
+      Active: 'bg-green-100 text-green-700',
+      Processing: 'bg-yellow-100 text-yellow-700',
+      Failed: 'bg-red-100 text-red-600',
+    };
+    return (
+      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${map[status || ''] || 'bg-gray-100 text-gray-600'}`}>
+        {status || 'Unknown'}
+      </span>
+    );
+  };
+
+  const assetTypeBadge = (type?: string) => {
+    const map: Record<string, string> = {
+      Image: 'bg-blue-100 text-blue-700',
+      Video: 'bg-purple-100 text-purple-700',
+      Audio: 'bg-orange-100 text-orange-700',
+    };
+    return (
+      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${map[type || ''] || 'bg-gray-100 text-gray-600'}`}>
+        {type || 'N/A'}
+      </span>
+    );
+  };
 
   const buildCurlCreate = (body: any) => {
     const key = apiKey || 'YOUR_API_KEY';
@@ -448,6 +663,420 @@ function Playground() {
           </div>
 
         </div>
+      </div>
+
+      {/* ── Asset Management Panel (collapsible) ── */}
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <button
+          onClick={() => setShowAssets(!showAssets)}
+          className="w-full flex items-center justify-between p-4 sm:p-5 text-left hover:bg-gray-50 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-lg">📦</span>
+            <h2 className="text-sm sm:text-base font-semibold text-gray-800">我的素材 (Assets)</h2>
+            {apiKey && <span className="text-xs text-gray-400">· 由当前 API Key 管理</span>}
+          </div>
+          <span className="text-xs text-gray-400">{showAssets ? '▲ 收起' : '▼ 展开'}</span>
+        </button>
+
+        {showAssets && (
+          <div className="px-4 sm:px-5 pb-5 space-y-4 border-t border-gray-100 pt-4">
+            {/* API Key required notice */}
+            {!apiKey ? (
+              <div className="text-center py-6 text-gray-400 text-sm">
+                <p>🔑 请先在上方填入 API Key 以查看和管理素材</p>
+              </div>
+            ) : (
+              <>
+                {/* Tab Navigation */}
+                <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+                  {([
+                    { key: 'list' as AssetTab, label: '已上传素材', icon: '📦' },
+                    { key: 'create' as AssetTab, label: '提交素材', icon: '➕' },
+                    { key: 'public' as AssetTab, label: '公共素材库', icon: '🌐' },
+                  ]).map(tab => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setAssetTab(tab.key)}
+                      className={`px-3 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-colors ${
+                        assetTab === tab.key
+                          ? 'bg-white text-gray-800 shadow-sm'
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      {tab.icon} {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* ═══ Tab: My Assets List ═══ */}
+                {assetTab === 'list' && (
+                  <div className="space-y-3">
+                    {/* Filters */}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="text-xs text-gray-600">状态筛选:</span>
+                      {['Active', 'Processing', 'Failed'].map(s => (
+                        <label key={s} className="flex items-center gap-1 text-xs cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={assetStatusFilter.includes(s)}
+                            onChange={(e) => {
+                              if (e.target.checked) setAssetStatusFilter(prev => [...prev, s]);
+                              else setAssetStatusFilter(prev => prev.filter(x => x !== s));
+                            }}
+                            className="rounded"
+                          />
+                          {s}
+                        </label>
+                      ))}
+                      <button
+                        onClick={() => fetchAssetList(1)}
+                        disabled={assetLoading}
+                        className="ml-auto px-3 py-1 bg-blue-600 text-white rounded-md text-xs hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                      >
+                        {assetLoading ? '加载中...' : '🔍 查询'}
+                      </button>
+                    </div>
+
+                    {/* Query single asset */}
+                    <div className="flex flex-col sm:flex-row gap-2 p-2.5 bg-gray-50 rounded-lg">
+                      <input
+                        type="text"
+                        value={queryAssetId}
+                        onChange={(e) => setQueryAssetId(e.target.value)}
+                        className="flex-1 px-3 py-1.5 border border-gray-200 rounded-md text-xs font-mono focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none"
+                        placeholder="输入 Asset ID 查询详情..."
+                      />
+                      <button
+                        onClick={handleQueryAsset}
+                        disabled={queryAssetLoading}
+                        className="px-3 py-1.5 bg-indigo-600 text-white rounded-md text-xs hover:bg-indigo-700 disabled:opacity-50 transition-colors whitespace-nowrap"
+                      >
+                        {queryAssetLoading ? '查询中...' : '查询详情'}
+                      </button>
+                    </div>
+
+                    {/* Query Result */}
+                    {queryAssetResult && (
+                      <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-semibold text-blue-800">查询结果</span>
+                          <button onClick={() => setQueryAssetResult(null)} className="text-xs text-gray-400 hover:text-gray-600">✕ 关闭</button>
+                        </div>
+                        <pre className="text-xs bg-white p-2 rounded overflow-x-auto max-h-40 overflow-y-auto">
+                          {JSON.stringify(queryAssetResult, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+
+                    {/* Assets Table (desktop) */}
+                    <div className="overflow-x-auto hidden md:block">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="border-b bg-gray-50">
+                            <th className="p-2 font-semibold text-gray-600">Asset ID</th>
+                            <th className="p-2 font-semibold text-gray-600">名称</th>
+                            <th className="p-2 font-semibold text-gray-600">类型</th>
+                            <th className="p-2 font-semibold text-gray-600">状态</th>
+                            <th className="p-2 font-semibold text-gray-600">创建时间</th>
+                            <th className="p-2 font-semibold text-gray-600">操作</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {assetList.length === 0 && !assetLoading && (
+                            <tr><td colSpan={6} className="p-4 text-center text-gray-400 text-xs">暂无素材</td></tr>
+                          )}
+                          {assetList.map(a => (
+                            <tr key={a.Id} className="border-b hover:bg-gray-50 transition-colors">
+                              <td className="p-2 font-mono text-xs max-w-[160px] truncate" title={a.Id}>{a.Id}</td>
+                              <td className="p-2 text-xs">{a.Name || '-'}</td>
+                              <td className="p-2">{assetTypeBadge(a.AssetType)}</td>
+                              <td className="p-2">{assetStatusBadge(a.Status)}</td>
+                              <td className="p-2 text-xs text-gray-500">{a.CreateTime || '-'}</td>
+                              <td className="p-2">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <button
+                                    onClick={() => copyAssetId(a.Id)}
+                                    className="text-xs text-gray-500 hover:text-blue-600 transition-colors whitespace-nowrap"
+                                    title="复制 asset:// 引用"
+                                  >
+                                    {assetCopiedId === a.Id ? '✅ 已复制' : '📋 复制'}
+                                  </button>
+                                  <button
+                                    onClick={() => addRefFromAsset(a.Id, a.AssetType)}
+                                    className="text-xs text-indigo-600 hover:text-indigo-800 transition-colors font-medium whitespace-nowrap"
+                                    title="将 asset://ID 添加到下方参考素材"
+                                  >
+                                    📎 使用
+                                  </button>
+                                  {a.URL && (
+                                    <a href={a.URL} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline whitespace-nowrap">
+                                      👁️ 预览
+                                    </a>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Assets Cards (mobile) */}
+                    <div className="md:hidden grid gap-2">
+                      {assetList.length === 0 && !assetLoading && (
+                        <p className="text-center text-gray-400 text-xs py-4">暂无素材</p>
+                      )}
+                      {assetList.map(a => (
+                        <div key={a.Id} className="border border-gray-100 rounded-lg p-2.5 bg-gray-50 space-y-1.5">
+                          <div className="flex justify-between items-center">
+                            <span className="font-mono text-xs text-gray-700 truncate max-w-[180px]" title={a.Id}>{a.Id}</span>
+                            <div className="flex gap-1">{assetTypeBadge(a.AssetType)} {assetStatusBadge(a.Status)}</div>
+                          </div>
+                          {a.Name && <p className="text-xs text-gray-600">{a.Name}</p>}
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs text-gray-400">{a.CreateTime || '-'}</span>
+                            <div className="flex gap-2">
+                              <button onClick={() => copyAssetId(a.Id)} className="text-xs text-gray-500">📋</button>
+                              <button onClick={() => addRefFromAsset(a.Id, a.AssetType)} className="text-xs text-indigo-600 font-medium">📎 使用</button>
+                              {a.URL && <a href={a.URL} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600">👁️</a>}
+                            </div>
+                          </div>
+                          {a.Error && <p className="text-xs text-red-500">❌ {a.Error.Message || a.Error.Code}</p>}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Pagination */}
+                    {assetTotal > assetPageSize && (
+                      <div className="flex items-center justify-center gap-3 pt-1">
+                        <button
+                          onClick={() => fetchAssetList(assetPage - 1)}
+                          disabled={assetPage <= 1 || assetLoading}
+                          className="px-2.5 py-1 text-xs rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                        >
+                          ← 上一页
+                        </button>
+                        <span className="text-xs text-gray-500">第 {assetPage} 页 / 共 {Math.ceil(assetTotal / assetPageSize)} 页</span>
+                        <button
+                          onClick={() => fetchAssetList(assetPage + 1)}
+                          disabled={assetPage >= Math.ceil(assetTotal / assetPageSize) || assetLoading}
+                          className="px-2.5 py-1 text-xs rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                        >
+                          下一页 →
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ═══ Tab: Create Asset ═══ */}
+                {assetTab === 'create' && (
+                  <div className="space-y-3 max-w-2xl">
+                    <div className="p-2.5 bg-amber-50 border border-amber-100 rounded-lg text-xs text-amber-700 space-y-0.5">
+                      <p className="font-semibold">📋 素材提交说明</p>
+                      <p>提交素材后需经过预处理，状态为 Processing → Active 即可使用。</p>
+                      <p>使用方式：在视频生成请求中通过 <code className="bg-amber-100 px-1 rounded">asset://&lt;ASSET_ID&gt;</code> 引用。</p>
+                    </div>
+
+                    <div className="space-y-2.5">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">素材 URL（必填）</label>
+                        <input
+                          type="text"
+                          value={createUrl}
+                          onChange={(e) => setCreateUrl(e.target.value)}
+                          className="w-full px-3 py-1.5 border border-gray-200 rounded-md text-xs font-mono focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all"
+                          placeholder="https://example.com/asset.jpg"
+                        />
+                        <p className="text-xs text-gray-400 mt-0.5">仅支持公共可访问的 URL</p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">素材类型（必填）</label>
+                          <select
+                            value={createType}
+                            onChange={(e) => setCreateType(e.target.value)}
+                            className="w-full px-3 py-1.5 border border-gray-200 rounded-md text-xs bg-white focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none"
+                          >
+                            <option value="Image">🖼️ Image</option>
+                            <option value="Video">🎬 Video</option>
+                            <option value="Audio">🎵 Audio</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">名称（可选）</label>
+                          <input
+                            type="text"
+                            value={createName}
+                            onChange={(e) => setCreateName(e.target.value)}
+                            className="w-full px-3 py-1.5 border border-gray-200 rounded-md text-xs focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none"
+                            placeholder="素材名称（上限 64 字符）"
+                            maxLength={64}
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={handleCreateAsset}
+                        disabled={createAssetLoading || !createUrl.trim()}
+                        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors text-xs font-medium shadow-sm"
+                      >
+                        {createAssetLoading ? '提交中...' : '🚀 提交素材'}
+                      </button>
+                    </div>
+
+                    {/* Requirements quick ref */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                      <div className="p-2.5 bg-blue-50 rounded-lg">
+                        <p className="font-semibold text-blue-700 mb-0.5">🖼️ 图像</p>
+                        <ul className="text-blue-600 space-y-0.5 list-disc pl-3">
+                          <li>格式: jpeg, png, webp, bmp, tiff, gif</li>
+                          <li>尺寸: 300~6000px，≤ 30MB</li>
+                        </ul>
+                      </div>
+                      <div className="p-2.5 bg-purple-50 rounded-lg">
+                        <p className="font-semibold text-purple-700 mb-0.5">🎬 视频</p>
+                        <ul className="text-purple-600 space-y-0.5 list-disc pl-3">
+                          <li>格式: mp4, mov</li>
+                          <li>时长: 2~15s，≤ 50MB</li>
+                        </ul>
+                      </div>
+                      <div className="p-2.5 bg-orange-50 rounded-lg">
+                        <p className="font-semibold text-orange-700 mb-0.5">🎵 音频</p>
+                        <ul className="text-orange-600 space-y-0.5 list-disc pl-3">
+                          <li>格式: wav, mp3</li>
+                          <li>时长: 2~15s，≤ 15MB</li>
+                        </ul>
+                      </div>
+                    </div>
+
+                    {/* Create Result */}
+                    {createAssetResult && (
+                      <div className={`p-3 rounded-lg border ${createAssetResult.Id ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
+                        <p className={`text-xs font-semibold ${createAssetResult.Id ? 'text-green-700' : 'text-red-700'}`}>
+                          {createAssetResult.Id ? '✅ 提交成功' : '❌ 提交失败'}
+                        </p>
+                        {createAssetResult.Id && (
+                          <div className="mt-1 flex items-center gap-2 flex-wrap">
+                            <code className="text-xs bg-white px-2 py-0.5 rounded border font-mono">{createAssetResult.Id}</code>
+                            <button
+                              onClick={() => copyAssetId(createAssetResult.Id)}
+                              className="text-xs text-blue-600 hover:underline"
+                            >
+                              📋 复制
+                            </button>
+                            <button
+                              onClick={() => { setQueryAssetId(createAssetResult.Id); setAssetTab('list'); }}
+                              className="text-xs text-indigo-600 hover:underline"
+                            >
+                              🔍 查看状态
+                            </button>
+                            <button
+                              onClick={() => addRefFromAsset(createAssetResult.Id, createType)}
+                              className="text-xs text-green-600 hover:underline font-medium"
+                            >
+                              📎 使用
+                            </button>
+                          </div>
+                        )}
+                        {!createAssetResult.Id && (
+                          <pre className="text-xs mt-1 text-red-600 overflow-x-auto">{JSON.stringify(createAssetResult, null, 2)}</pre>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ═══ Tab: Public Assets ═══ */}
+                {assetTab === 'public' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-gray-600">平台提供的虚拟人像素材库，可直接用于视频生成。</p>
+                      <button
+                        onClick={() => fetchPublicAssets(1)}
+                        disabled={publicLoading}
+                        className="px-3 py-1 bg-blue-600 text-white rounded-md text-xs hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                      >
+                        {publicLoading ? '加载中...' : '🔄 刷新'}
+                      </button>
+                    </div>
+
+                    {/* Public Assets Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                      {publicAssets.length === 0 && !publicLoading && (
+                        <p className="col-span-full text-center text-gray-400 text-xs py-6">暂无公共素材</p>
+                      )}
+                      {publicAssets.map(group => (
+                        <div key={group.SID} className="border border-gray-100 rounded-lg p-2.5 hover:shadow-md transition-shadow bg-white">
+                          <div className="flex justify-between items-start mb-1">
+                            <h4 className="text-xs font-medium text-gray-800 line-clamp-1" title={group.Title || group.SID}>{group.Title || group.SID}</h4>
+                            {group.Score !== undefined && (
+                              <span className="text-xs text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded whitespace-nowrap ml-2">
+                                ⭐ {group.Score.toFixed(1)}
+                              </span>
+                            )}
+                          </div>
+                          {/* Thumbnail */}
+                          {group.Content?.Image?.[0]?.URL && (
+                            <div className="mb-1.5 rounded-md overflow-hidden h-32 bg-gray-100 flex items-center justify-center">
+                              <img
+                                src={group.Content.Image[0].URL}
+                                alt={group.Title || 'Thumbnail'}
+                                className="w-full h-full object-cover object-center hover:scale-105 transition-transform duration-300"
+                                loading="lazy"
+                              />
+                            </div>
+                          )}
+                          {!group.Content?.Image?.[0]?.URL && group.Content?.Video?.[0]?.URL && (
+                            <div className="mb-1.5 rounded-md overflow-hidden h-32 bg-gray-100">
+                              <video src={group.Content.Video[0].URL} className="w-full h-full object-cover" controls preload="metadata" />
+                            </div>
+                          )}
+                          {group.Description && (
+                            <p className="text-xs text-gray-500 line-clamp-2 mb-1.5" title={group.Description}>{group.Description}</p>
+                          )}
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-gray-400 font-mono truncate max-w-[120px]" title={group.SID}>{group.SID}</span>
+                            <button
+                              onClick={() => { navigator.clipboard.writeText(group.SID); }}
+                              className="text-xs text-gray-500 hover:text-blue-600 transition-colors"
+                              title="复制 SID"
+                            >
+                              📋 复制ID
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Public Pagination */}
+                    {publicTotal > publicPageSize && (
+                      <div className="flex items-center justify-center gap-3 pt-1">
+                        <button
+                          onClick={() => fetchPublicAssets(publicPage - 1)}
+                          disabled={publicPage <= 1 || publicLoading}
+                          className="px-2.5 py-1 text-xs rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                        >
+                          ← 上一页
+                        </button>
+                        <span className="text-xs text-gray-500">第 {publicPage} 页 / 共 {Math.ceil(publicTotal / publicPageSize)} 页</span>
+                        <button
+                          onClick={() => fetchPublicAssets(publicPage + 1)}
+                          disabled={publicPage >= Math.ceil(publicTotal / publicPageSize) || publicLoading}
+                          className="px-2.5 py-1 text-xs rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                        >
+                          下一页 →
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Prompt & Reference Media (full width) ── */}
