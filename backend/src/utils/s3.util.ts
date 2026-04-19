@@ -1,10 +1,6 @@
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { SignatureV4 } from '@smithy/signature-v4';
-import { HttpRequest } from '@smithy/protocol-http';
-import { formatUrl } from '@aws-sdk/util-format-url';
-import { Sha256 } from '@aws-crypto/sha256-js';
 import { config } from '../config.js';
 import { logger } from './logger.util.js';
 
@@ -104,41 +100,44 @@ export async function uploadFromUrl(
   return { size: contentLength ?? 0, mime: contentType };
 }
 
-// Lazy SigV4 signer — only built when S3_PUBLIC_ENDPOINT is configured.
-let _customDomainSigner: SignatureV4 | null = null;
-function getCustomDomainSigner(): SignatureV4 {
-  if (_customDomainSigner) return _customDomainSigner;
-  _customDomainSigner = new SignatureV4({
-    credentials: {
-      accessKeyId: config.S3_ACCESS_KEY_ID,
-      secretAccessKey: config.S3_SECRET_ACCESS_KEY,
-    },
+// Dedicated presign client for custom-domain downloads. Uses virtual-hosted
+// bucket style against the canonical S3 endpoint, then we swap only the URL
+// origin to the vanity domain. Tigris accepts this form for CNAME-backed
+// aliases; signing directly against the vanity host has proven unreliable.
+let _customDomainPresignClient: S3Client | null = null;
+function getCustomDomainPresignClient(): S3Client {
+  if (_customDomainPresignClient) return _customDomainPresignClient;
+  _customDomainPresignClient = new S3Client({
     region: config.S3_REGION,
-    service: 's3',
-    sha256: Sha256,
-    applyChecksum: false, // not needed for presigned GET
+    ...(config.S3_ENDPOINT ? { endpoint: config.S3_ENDPOINT } : {}),
+    ...(config.S3_ACCESS_KEY_ID && config.S3_SECRET_ACCESS_KEY
+      ? {
+          credentials: {
+            accessKeyId: config.S3_ACCESS_KEY_ID,
+            secretAccessKey: config.S3_SECRET_ACCESS_KEY,
+          },
+        }
+      : {}),
+    forcePathStyle: false,
   });
-  return _customDomainSigner;
+  return _customDomainPresignClient;
 }
 
-// Sign a GET URL against a custom Tigris vhost-alias domain
-// (https://custom.example.com/<key>). The SDK's S3Client doesn't have a
-// clean way to produce bucket-less URLs against a custom endpoint, so we
-// drive SigV4 directly.
 async function presignAgainstCustomDomain(key: string, ttlSeconds: number): Promise<string> {
+  const presigned = await getSignedUrl(
+    getCustomDomainPresignClient(),
+    new GetObjectCommand({
+      Bucket: config.S3_BUCKET,
+      Key: key,
+    }),
+    { expiresIn: ttlSeconds },
+  );
+
+  const url = new URL(presigned);
   const base = new URL(config.S3_PUBLIC_ENDPOINT);
-  const req = new HttpRequest({
-    method: 'GET',
-    protocol: base.protocol,
-    hostname: base.hostname,
-    ...(base.port ? { port: Number(base.port) } : {}),
-    // Encode each path segment but keep '/' separators; mirrors S3's canonical
-    // URI handling for keys containing slashes.
-    path: '/' + key.split('/').map(encodeURIComponent).join('/'),
-    headers: { host: base.host },
-  });
-  const signed = await getCustomDomainSigner().presign(req, { expiresIn: ttlSeconds });
-  return formatUrl(signed as any);
+  url.protocol = base.protocol;
+  url.host = base.host;
+  return url.toString();
 }
 
 // Generates a fresh presigned GET URL. Routes through the custom-domain signer
