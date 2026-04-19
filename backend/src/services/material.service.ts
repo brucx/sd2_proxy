@@ -581,7 +581,14 @@ export async function resolveForProvider(
   provider: string,
 ): Promise<ResolvedMaterialRef> {
   const entry = await getMaterialForToken(keyRecord, materialId);
-  if (!entry) return { kind: 'not_found' };
+
+  if (!entry) {
+    // Asset not found in this token's local library. It might be a public /
+    // upstream asset (e.g. from the virtual-human library). Try resolving via
+    // Meitu's GetAsset with the global API key.
+    return resolveUpstreamPublicAsset(materialId, provider);
+  }
+
   const { material, meitu } = entry;
 
   if (material.s3Status === 'failed') return { kind: 'not_ready', reason: material.s3Error || 's3_failed' };
@@ -604,6 +611,42 @@ export async function resolveForProvider(
   if (!material.s3Key) return { kind: 'not_ready', reason: 's3_missing' };
   const url = await getPresignedUrl(material.s3Key, MATERIAL_PRESIGN_TTL_SECONDS, { forceStandardEndpoint: true });
   return { kind: 'url', value: url };
+}
+
+// Resolve a public / upstream asset that isn't in any token's local library.
+// For Meitu: pass through the asset ID as-is (Meitu upstream recognises its
+// own public asset IDs natively).
+// For Evolink/Ark: call Meitu's GetAsset to obtain the asset URL, then hand
+// the URL to the provider.
+async function resolveUpstreamPublicAsset(
+  materialId: string,
+  provider: string,
+): Promise<ResolvedMaterialRef> {
+  // For Meitu, just pass through — upstream knows all its own asset IDs
+  // (both user-uploaded and public library assets).
+  if (provider === 'meitu') {
+    return { kind: 'asset_id', value: materialId };
+  }
+
+  // For Evolink / Ark, we need a URL. Ask Meitu's upstream GetAsset for it.
+  try {
+    const data = await meituPost('/api/v1/open/GetAsset', { Id: materialId });
+    const result = data?.Result || data;
+    if (result?.Status === 'Active' && result?.URL) {
+      return { kind: 'url', value: result.URL };
+    }
+    if (result?.Status === 'Processing') {
+      return { kind: 'not_ready', reason: 'public_asset_processing' };
+    }
+    if (result?.Status === 'Failed') {
+      return { kind: 'not_ready', reason: result?.Error?.Message || 'public_asset_failed' };
+    }
+    // If we got a response but no URL, treat as not_found
+    return { kind: 'not_found' };
+  } catch {
+    // GetAsset failed — the ID is genuinely unknown
+    return { kind: 'not_found' };
+  }
 }
 
 // -------- Cron hooks --------
