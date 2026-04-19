@@ -15,6 +15,8 @@ import { getProvider } from '../providers/index.js';
 import { generateTaskId } from '../utils/taskId.util.js';
 import { attemptModerationFallback, isFallbackEligible } from '../utils/autoFallback.util.js';
 import { rewriteArkVideoUrl, computeVideoExpiresAt } from '../utils/videoUrl.util.js';
+import { maybeKickoffUpload } from '../services/videoOffload.service.js';
+import { logger } from '../utils/logger.util.js';
 import type { AppVariables } from '../types.js';
 
 export const proxyRoutes = new Hono<{ Variables: AppVariables }>();
@@ -428,6 +430,19 @@ export const getResultHandler = async (c: any) => {
           if (ucc && ucc.active > 0) ucc.active--;
           const kcc = keyConcurrencyCache.get(existingLog.keyId) || 0;
           if (kcc > 0) keyConcurrencyCache.set(existingLog.keyId, kcc - 1);
+
+          // Fire-and-forget S3 offload. Internally a no-op when S3 is
+          // disabled, the task isn't succeeded with a video, or another worker
+          // has already claimed the upload.
+          if (persistStatus === 'succeeded' && rawUpstreamVideoUrl) {
+            maybeKickoffUpload({
+              id: existingLog.id,
+              taskId: existingLog.taskId,
+              provider: logProvider,
+              upstreamVideoUrl: rawUpstreamVideoUrl,
+              upstreamFinishedAt: timingFields.upstreamFinishedAt ?? existingLog.upstreamFinishedAt ?? null,
+            }).catch(err => logger.error({ err, taskId: existingLog.taskId }, 'maybeKickoffUpload error'));
+          }
         }
       }
     }

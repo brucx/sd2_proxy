@@ -50,6 +50,11 @@ export const usageLogs = pgTable('usage_logs', {
   resultData: text('result_data'), // 任务终态时对外返回的 Ark-shape 响应 JSON（id 已替换为我方 task_id）
   upstreamVideoUrl: text('upstream_video_url'),                   // 上游原始视频 URL，供 /v 端点 302 跳转
   upstreamVideoExpiresAt: timestamp('upstream_video_expires_at'), // NULL = 永久（evolink）；否则为签名过期时刻（ark/meitu ≈ upstream_finished_at + 23h55m）
+  s3Key: text('s3_key'),                                          // S3 object key once uploaded; NULL = not yet on S3
+  s3UploadedAt: timestamp('s3_uploaded_at'),                      // 上传成功时刻
+  s3UploadStatus: varchar('s3_upload_status', { length: 20 }),    // NULL | 'uploading' | 'done' | 'failed'
+  s3UploadAttempts: integer('s3_upload_attempts').notNull().default(0), // failure counter, used by cron retry backoff
+  s3UploadError: text('s3_upload_error'),                         // last failure message (audit/debug)
   upstreamCreateRaw: text('upstream_create_raw'), // 上游 provider /create 的原始响应（审计用）
   upstreamQueryRaw: text('upstream_query_raw'),   // 上游 provider 终态查询的原始响应（审计用）
   requestBody: text('request_body'), // 原始请求体（截断至 8K）
@@ -64,6 +69,7 @@ export const usageLogs = pgTable('usage_logs', {
   index('usage_logs_task_id_idx').on(table.taskId),
   index('usage_logs_upstream_task_id_idx').on(table.upstreamTaskId),
   index('usage_logs_created_at_idx').on(table.createdAt),
+  index('usage_logs_s3_upload_status_idx').on(table.s3UploadStatus),
 ]);
 
 export const requestLogs = pgTable('request_logs', {

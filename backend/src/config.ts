@@ -26,6 +26,24 @@ export const config = {
   // We subtract a small safety margin so a freshly-issued 302 Location never
   // hands back a URL that's about to expire mid-download.
   ARK_VIDEO_URL_TTL_MS: 24 * 60 * 60 * 1000 - 5 * 60 * 1000,
+
+  // -- S3-compatible offload (Tigris / MinIO / AWS S3) --
+  // Empty S3_BUCKET disables the offload feature entirely; /v falls back to
+  // pure upstream 302 as before.
+  S3_BUCKET: process.env.S3_BUCKET || '',
+  S3_REGION: process.env.AWS_REGION || 'auto',
+  S3_ENDPOINT: process.env.AWS_ENDPOINT_URL_S3 || '',
+  S3_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID || '',
+  S3_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY || '',
+  // Validity of each /v-issued presigned URL, in seconds. Requested 24h.
+  S3_PRESIGN_TTL_SECONDS: parseInt(process.env.S3_PRESIGN_TTL_SECONDS || String(24 * 60 * 60)),
+  // Custom CDN/vanity domain whose CNAME points to {bucket}.t3.tigrisbucket.io
+  // (Tigris vhost alias). When set, presigned GET URLs are signed for this
+  // host and have NO /{bucket}/ prefix in the path. Empty = use the standard
+  // endpoint and bucket-prefixed paths.
+  S3_PUBLIC_ENDPOINT: (process.env.S3_PUBLIC_ENDPOINT || '').replace(/\/+$/, ''),
+  // Retry a failed upload up to this many times before giving up in cron.
+  S3_UPLOAD_MAX_ATTEMPTS: parseInt(process.env.S3_UPLOAD_MAX_ATTEMPTS || '5'),
   MODEL_MAPPING: process.env.MODEL_MAPPING 
     ? JSON.parse(process.env.MODEL_MAPPING) 
     : {

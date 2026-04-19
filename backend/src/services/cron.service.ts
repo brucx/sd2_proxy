@@ -9,6 +9,7 @@ import { concurrencyCache, keyConcurrencyCache } from './concurrency.service.js'
 import { logger } from '../utils/logger.util.js';
 import { attemptModerationFallback, isFallbackEligible } from '../utils/autoFallback.util.js';
 import { rewriteArkVideoUrl, computeVideoExpiresAt } from '../utils/videoUrl.util.js';
+import { maybeKickoffUpload, retryFailedUploads } from './videoOffload.service.js';
 
 const CRON_BATCH_SIZE = 10;
 
@@ -136,13 +137,24 @@ const processPendingTask = async (log: any) => {
         if (statusUpdated) {
           const ucc = concurrencyCache.get(log.userId);
           if (ucc && ucc.active > 0) ucc.active--;
-          
+
           if (log.keyId) {
             const kcc = keyConcurrencyCache.get(log.keyId) || 0;
             if (kcc > 0) keyConcurrencyCache.set(log.keyId, kcc - 1);
           }
+
+          // Fire-and-forget S3 offload of the freshly-finished video.
+          if (normalizedStatus === 'succeeded' && rawUpstreamVideoUrl) {
+            maybeKickoffUpload({
+              id: log.id,
+              taskId: log.taskId,
+              provider: log.provider || 'meitu',
+              upstreamVideoUrl: rawUpstreamVideoUrl,
+              upstreamFinishedAt: timingFields.upstreamFinishedAt ?? log.upstreamFinishedAt ?? null,
+            }).catch(err => logger.error({ err, taskId: log.taskId }, 'maybeKickoffUpload error'));
+          }
         }
-        
+
         logger.info(`[${log.provider || 'meitu'}] Updated task ${log.taskId} status to ${normalizedStatus}, cost: ¥${cost}, applied: ${statusUpdated}`);
       }
     }
@@ -225,11 +237,20 @@ export function startCronJobs() {
         }
       }
 
+      // Retry S3 uploads for tasks where the inline kickoff didn't land
+      // (process restart between terminal write and upload, transient S3
+      // error, etc.). No-op when S3 is disabled.
+      try {
+        await retryFailedUploads(CRON_BATCH_SIZE);
+      } catch (err) {
+        logger.error({ err }, 'S3 upload retry pass error');
+      }
+
       // Cleanup request logs older than 30 days
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
       const deleteResult = await db.delete(schema.requestLogs).where(lt(schema.requestLogs.createdAt, thirtyDaysAgo));
       // Drizzle delete result depends on driver, but we don't necessarily need to log the count unless we use returning() or postgres allows it.
-      
+
     } catch (error) {
       logger.error({ err: error }, 'Cron Job Error');
     }
