@@ -10,9 +10,6 @@ import { normalizeToArkResponse, normalizeStatus, toLifecycleStatus, arkErrorRes
 function inferMode(body: any): 'text-to-video' | 'image-to-video' | 'reference-to-video' {
   const contents = body.content || [];
 
-  const hasImage = contents.some((c: any) => c.type === 'image_url')
-    || (Array.isArray(body.image_urls) && body.image_urls.length > 0);
-
   const hasVideo = contents.some((c: any) => c.type === 'video_url' || c.type === 'video')
     || (Array.isArray(body.video_urls) && body.video_urls.length > 0);
 
@@ -20,7 +17,29 @@ function inferMode(body: any): 'text-to-video' | 'image-to-video' | 'reference-t
     || (Array.isArray(body.audio_urls) && body.audio_urls.length > 0);
 
   if (hasVideo || hasAudio) return 'reference-to-video';
-  if (hasImage) return 'image-to-video';
+
+  let hasImage = false;
+  let hasReferenceRole = false;
+
+  for (const c of contents) {
+    if (c.type === 'image_url') {
+      hasImage = true;
+      const role = c.role || c.image_url?.role;
+      if (role === 'reference_image') {
+        hasReferenceRole = true;
+      }
+    }
+  }
+
+  if (Array.isArray(body.image_urls) && body.image_urls.length > 0) {
+    hasImage = true;
+  }
+
+  if (hasImage) {
+    if (hasReferenceRole) return 'reference-to-video';
+    return 'image-to-video';
+  }
+
   return 'text-to-video';
 }
 
@@ -86,6 +105,17 @@ function translateCreateBody(body: any, evolinkModel: string): any {
 function preNormalizeEvolink(data: any, requestBody?: any): any {
   if (!data || typeof data !== 'object') return data;
   const out: any = { ...data };
+  // Evolink's top-level `duration` actually carries upstream execution seconds
+  // (despite the name — upstream bug, observed empirically on completed tasks).
+  // Strip it from the spread so it can't pollute Ark's `duration`, which means
+  // output video length and gets back-filled from the request below.
+  const evolinkExecSec: number | undefined =
+    typeof data.duration === 'number'
+      ? data.duration
+      : (typeof data.task_info?.video_duration === 'number'
+          ? data.task_info.video_duration
+          : undefined);
+  delete out.duration;
   if (Array.isArray(data.results) && data.results.length > 0) {
     out.content = { video_url: data.results[0], ...(data.content || {}) };
   }
@@ -95,17 +125,16 @@ function preNormalizeEvolink(data: any, requestBody?: any): any {
   if (out.created_at == null && typeof data.created === 'number') {
     out.created_at = data.created;
   }
-  // Evolink overloads `task_info.video_duration` to mean upstream task execution
-  // time in seconds (not output video length — that's driven by the request
-  // `duration`). Translate it into Ark's `updated_at` so the route layer's
-  // timing bookkeeping (upstream_started_at / upstream_finished_at /
-  // task_duration_ms) works uniformly across providers.
+  // Evolink doesn't return an end timestamp — synthesize `updated_at` from
+  // created_at + execution seconds so the route layer's timing bookkeeping
+  // (upstream_started_at / upstream_finished_at / task_duration_ms) works
+  // uniformly across providers.
   if (
     out.updated_at == null
     && typeof out.created_at === 'number'
-    && typeof data.task_info?.video_duration === 'number'
+    && typeof evolinkExecSec === 'number'
   ) {
-    out.updated_at = out.created_at + data.task_info.video_duration;
+    out.updated_at = out.created_at + evolinkExecSec;
   }
 
   // Ark-compatibility back-fill. Evolink omits these from its task responses,

@@ -108,6 +108,9 @@ const processPendingTask = async (log: any) => {
               // Persist the Ark-shape snapshot with our task id and self URL.
               resultData: JSON.stringify(storedArkResponse),
               ...videoFields,
+              ...(result.upstreamRaw !== undefined
+                ? { upstreamQueryRaw: JSON.stringify(result.upstreamRaw) }
+                : {}),
               ...timingFields,
               updatedAt: new Date()
             })
