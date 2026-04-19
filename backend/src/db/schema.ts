@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, boolean, varchar, index, numeric } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, integer, timestamp, boolean, varchar, index, numeric, primaryKey } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
@@ -100,6 +100,76 @@ export const ipWhitelist = pgTable('ip_whitelist', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => [
   index('ip_whitelist_user_id_idx').on(table.userId),
+]);
+
+// Per-token material library. Each row is owned by a single API key (token) —
+// key_id is the authorization boundary enforced on every read.
+//
+// `id` is surfaced to clients as Meitu-shape `asset-YYYYMMDDHHMMSS-xxxxx` so
+// that callers migrating from Meitu don't need to change their ID parsers.
+// It is distinct from any upstream asset id (which lives in
+// material_provider_refs).
+export const materials = pgTable('materials', {
+  id: varchar('id', { length: 64 }).primaryKey(),
+  keyId: integer('key_id').references(() => keys.id).notNull(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  name: varchar('name', { length: 64 }).notNull().default(''),
+  assetType: varchar('asset_type', { length: 16 }).notNull(), // 'Image' | 'Video' | 'Audio'
+  groupId: varchar('group_id', { length: 64 }).notNull().default(''),
+  projectName: varchar('project_name', { length: 64 }).notNull().default('default'),
+
+  // Canonical source in our S3. Every provider resolution ultimately flows
+  // from this object (either referenced by URL directly or re-uploaded to a
+  // provider with asset APIs).
+  s3Key: text('s3_key'),
+  sourceUrl: text('source_url'),              // original URL the caller supplied
+  mime: varchar('mime', { length: 64 }),
+  size: integer('size'),
+  sha256: varchar('sha256', { length: 64 }),
+
+  // Ingest pipeline state — S3 leg. 'ready' means object is persisted and safe
+  // to serve via presigned URL.
+  s3Status: varchar('s3_status', { length: 16 }).notNull().default('pending'), // 'pending' | 'ready' | 'failed'
+  s3Attempts: integer('s3_attempts').notNull().default(0),
+  s3Error: text('s3_error'),
+
+  // Aggregated, client-facing status — this is what GetAsset/ListAssets map
+  // to Meitu's Status enum (Processing / Active / Failed). Driven by the
+  // worst-of (s3_status, meitu_status) for Meitu-bound tokens; equals
+  // s3_status for Evolink/Ark-bound tokens.
+  status: varchar('status', { length: 16 }).notNull().default('Processing'),
+  rejectReason: text('reject_reason'),
+
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at'),
+}, (table) => [
+  index('materials_key_id_idx').on(table.keyId),
+  index('materials_user_id_idx').on(table.userId),
+  index('materials_s3_status_idx').on(table.s3Status),
+  index('materials_created_at_idx').on(table.createdAt),
+]);
+
+// Per-provider sync state for a material. When a provider has an asset API
+// (currently only Meitu; Ark is gated on permissions), we re-upload the
+// material to the provider and cache its upstream id + signed URL here.
+// Providers without asset APIs (Evolink) don't get a row — they always
+// consume the S3 presigned URL at task-creation time.
+export const materialProviderRefs = pgTable('material_provider_refs', {
+  materialId: varchar('material_id', { length: 64 }).references(() => materials.id, { onDelete: 'cascade' }).notNull(),
+  provider: varchar('provider', { length: 16 }).notNull(),       // 'meitu' | 'ark'
+  upstreamAssetId: text('upstream_asset_id'),
+  upstreamUrl: text('upstream_url'),                             // provider's presigned URL (e.g. Meitu's 12h TOS link)
+  upstreamStatus: varchar('upstream_status', { length: 16 }),    // 'Processing' | 'Active' | 'Failed' (raw from upstream)
+  syncStatus: varchar('sync_status', { length: 16 }).notNull().default('pending'), // 'pending' | 'done' | 'failed'
+  syncAttempts: integer('sync_attempts').notNull().default(0),
+  lastError: text('last_error'),
+  syncedAt: timestamp('synced_at'),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.materialId, table.provider] }),
+  index('material_provider_refs_sync_status_idx').on(table.syncStatus),
+  index('material_provider_refs_upstream_status_idx').on(table.upstreamStatus),
 ]);
 
 export const balanceAudit = pgTable('balance_audit', {

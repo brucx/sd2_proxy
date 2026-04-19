@@ -1,5 +1,5 @@
 import type { InferSelectModel } from 'drizzle-orm';
-import type { users, keys, usageLogs, requestLogs, balanceAudit, ipWhitelist } from './db/schema.js';
+import type { users, keys, usageLogs, requestLogs, balanceAudit, ipWhitelist, materials, materialProviderRefs } from './db/schema.js';
 
 // Drizzle-inferred model types
 export type User = InferSelectModel<typeof users>;
@@ -8,6 +8,8 @@ export type UsageLog = InferSelectModel<typeof usageLogs>;
 export type RequestLog = InferSelectModel<typeof requestLogs>;
 export type BalanceAuditRecord = InferSelectModel<typeof balanceAudit>;
 export type IpWhitelistRecord = InferSelectModel<typeof ipWhitelist>;
+export type Material = InferSelectModel<typeof materials>;
+export type MaterialProviderRef = InferSelectModel<typeof materialProviderRefs>;
 
 // JWT payload type
 export interface JwtPayload {

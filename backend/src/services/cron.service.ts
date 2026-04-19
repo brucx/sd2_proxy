@@ -10,6 +10,11 @@ import { logger } from '../utils/logger.util.js';
 import { attemptModerationFallback, isFallbackEligible } from '../utils/autoFallback.util.js';
 import { rewriteArkVideoUrl, computeVideoExpiresAt } from '../utils/videoUrl.util.js';
 import { maybeKickoffUpload, retryFailedUploads } from './videoOffload.service.js';
+import {
+  retryMaterialS3Uploads,
+  retryMeituSyncs,
+  kickoffReadyMaterialsWithoutMeituRef,
+} from './material.service.js';
 
 const CRON_BATCH_SIZE = 10;
 
@@ -247,6 +252,23 @@ export function startCronJobs() {
         await retryFailedUploads(CRON_BATCH_SIZE);
       } catch (err) {
         logger.error({ err }, 'S3 upload retry pass error');
+      }
+
+      // Material ingest retries: failed S3 ingests and stalled Meitu syncs.
+      try {
+        await retryMaterialS3Uploads(CRON_BATCH_SIZE);
+      } catch (err) {
+        logger.error({ err }, 'Material S3 retry pass error');
+      }
+      try {
+        await retryMeituSyncs(CRON_BATCH_SIZE);
+      } catch (err) {
+        logger.error({ err }, 'Meitu material sync retry pass error');
+      }
+      try {
+        await kickoffReadyMaterialsWithoutMeituRef(CRON_BATCH_SIZE);
+      } catch (err) {
+        logger.error({ err }, 'Meitu material missing-ref backfill pass error');
       }
 
       // Cleanup request logs older than 30 days. Use SQL `now()` instead of

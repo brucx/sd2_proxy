@@ -16,8 +16,94 @@ import { generateTaskId } from '../utils/taskId.util.js';
 import { attemptModerationFallback, isFallbackEligible } from '../utils/autoFallback.util.js';
 import { rewriteArkVideoUrl, computeVideoExpiresAt } from '../utils/videoUrl.util.js';
 import { maybeKickoffUpload } from '../services/videoOffload.service.js';
+import { resolveForProvider } from '../services/material.service.js';
 import { logger } from '../utils/logger.util.js';
 import type { AppVariables } from '../types.js';
+
+// Scan + rewrite all `asset://<id>` references in a Seedance request body.
+// Each reference is re-homed per the target provider:
+//   - Meitu  → `asset://<upstream_meitu_asset_id>`  (replace our id with theirs)
+//   - others → direct URL (S3 presigned)            (shape-swap the *_url)
+//
+// Returns an error result if any referenced material isn't owned by this
+// token or isn't ready yet. The rewrite happens in-place on `body`.
+async function rewriteAssetRefs(
+  keyRecord: any,
+  body: any,
+  provider: string,
+): Promise<{ ok: true } | { ok: false; status: number; error: { code: string; message: string; type: string } }> {
+  if (!body || typeof body !== 'object') return { ok: true };
+
+  const resolveAssetRef = async (
+    materialId: string,
+  ): Promise<{ ok: true; value: string } | { ok: false; status: number; error: { code: string; message: string; type: string } }> => {
+    const resolved = await resolveForProvider(keyRecord, materialId, provider);
+    if (resolved.kind === 'not_found') {
+      return {
+        ok: false,
+        status: 403,
+        error: {
+          code: 'asset_forbidden',
+          message: `asset ${materialId} not found in this token's library`,
+          type: 'invalid_request_error',
+        },
+      };
+    }
+    if (resolved.kind === 'not_ready') {
+      return {
+        ok: false,
+        status: 409,
+        error: {
+          code: 'asset_not_ready',
+          message: `asset ${materialId} not ready: ${resolved.reason}`,
+          type: 'invalid_request_error',
+        },
+      };
+    }
+    return {
+      ok: true,
+      value: resolved.kind === 'asset_id' ? `asset://${resolved.value}` : resolved.value,
+    };
+  };
+
+  const rewriteStringRef = async (
+    raw: string,
+  ): Promise<{ ok: true; value: string } | { ok: false; status: number; error: { code: string; message: string; type: string } }> => {
+    const m = /^asset:\/\/(.+)$/.exec(raw.trim());
+    if (!m) return { ok: true, value: raw };
+    return resolveAssetRef(m[1]!);
+  };
+
+  if (Array.isArray(body.content)) {
+    for (const item of body.content) {
+      if (!item || typeof item !== 'object') continue;
+      const holder: { obj: any } | null =
+        item.image_url ? { obj: item.image_url }
+        : item.video_url ? { obj: item.video_url }
+        : item.audio_url ? { obj: item.audio_url }
+        : null;
+      if (!holder) continue;
+      const urlField: string | undefined = holder.obj?.url;
+      if (typeof urlField !== 'string') continue;
+      const rewritten = await rewriteStringRef(urlField);
+      if (!rewritten.ok) return rewritten;
+      holder.obj.url = rewritten.value;
+    }
+  }
+
+  for (const field of ['image_urls', 'video_urls', 'audio_urls'] as const) {
+    if (!Array.isArray(body[field])) continue;
+    for (let i = 0; i < body[field].length; i++) {
+      const value = body[field][i];
+      if (typeof value !== 'string') continue;
+      const rewritten = await rewriteStringRef(value);
+      if (!rewritten.ok) return rewritten;
+      body[field][i] = rewritten.value;
+    }
+  }
+
+  return { ok: true };
+}
 
 export const proxyRoutes = new Hono<{ Variables: AppVariables }>();
 
@@ -86,6 +172,17 @@ export const createHandler = async (c: any) => {
 
   const originalBody = JSON.stringify(body);
   const userModel = body.model;
+
+  // Swap any `asset://<our-id>` references to their per-provider form (upstream
+  // asset id for Meitu, S3 presigned URL for Evolink/Ark). Enforces per-token
+  // material ownership: refs that aren't in this token's library are rejected.
+  const resolveResult = await rewriteAssetRefs(keyRecord, body, provider);
+  if (!resolveResult.ok) {
+    cc.active--;
+    const ka = keyConcurrencyCache.get(keyRecord.id) || 0;
+    if (ka > 0) keyConcurrencyCache.set(keyRecord.id, ka - 1);
+    return c.json({ error: resolveResult.error }, resolveResult.status as any);
+  }
 
   try {
     const upstream = getProvider(provider);
@@ -232,6 +329,11 @@ export const getResultHandler = async (c: any) => {
   try {
     const existingLog = queryTaskId ? await findLogByTaskId(queryTaskId) : undefined;
     if (!existingLog) {
+      return c.json({ error: { code: 'task_not_found', message: `Task ${queryTaskId} not found`, type: 'invalid_request_error' } }, 404);
+    }
+    // Authorization: a task is only visible to the user that created it.
+    // Return 404 (not 403) so callers can't probe task IDs owned by others.
+    if (existingLog.userId !== keyRecord.userId) {
       return c.json({ error: { code: 'task_not_found', message: `Task ${queryTaskId} not found`, type: 'invalid_request_error' } }, 404);
     }
 

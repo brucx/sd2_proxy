@@ -47,15 +47,45 @@ export function buildObjectKey(taskId: string, anchor: Date | null | undefined):
   return `videos/${yyyy}/${mm}/${dd}/${taskId}.mp4`;
 }
 
+// Material object key. Key-scoped prefix lets us audit/clean by token in one
+// shot and makes accidental cross-token access visible in S3 access logs.
+export function buildMaterialKey(args: {
+  userId: number;
+  keyId: number;
+  materialId: string;
+  ext: string; // 'png' | 'jpg' | 'mp4' | 'mp3' | ...  no leading dot
+}): string {
+  const ext = args.ext.replace(/^\.+/, '').toLowerCase();
+  return `materials/${args.userId}/${args.keyId}/${args.materialId}.${ext}`;
+}
+
+// Best-effort extension inference from a URL's path. Falls back to a type-
+// appropriate default (png/mp4/mp3) when the URL is opaque. Query strings are
+// stripped before inspection.
+export function inferExtFromUrl(url: string, assetType: 'Image' | 'Video' | 'Audio'): string {
+  try {
+    const u = new URL(url);
+    const m = /\.([a-zA-Z0-9]{2,5})$/.exec(u.pathname);
+    if (m) return m[1]!.toLowerCase();
+  } catch { /* bad URL → fall through */ }
+  return assetType === 'Video' ? 'mp4' : assetType === 'Audio' ? 'mp3' : 'png';
+}
+
 // Streams the source URL into S3 using a multipart upload. Returns once the
 // upload completes; throws on any failure (network, S3 5xx, source 4xx).
-export async function uploadFromUrl(sourceUrl: string, key: string): Promise<{ size: number }> {
+// Optional `defaultContentType` overrides the video-oriented default for
+// non-video uploads (e.g. materials) when the source omits a Content-Type.
+export async function uploadFromUrl(
+  sourceUrl: string,
+  key: string,
+  defaultContentType = 'video/mp4',
+): Promise<{ size: number; mime: string }> {
   const res = await fetch(sourceUrl);
   if (!res.ok || !res.body) {
     throw new Error(`source fetch failed: ${res.status} ${res.statusText}`);
   }
   const contentLength = Number(res.headers.get('content-length') ?? '0') || undefined;
-  const contentType = res.headers.get('content-type') || 'video/mp4';
+  const contentType = res.headers.get('content-type') || defaultContentType;
 
   const upload = new Upload({
     client: getClient(),
@@ -71,7 +101,7 @@ export async function uploadFromUrl(sourceUrl: string, key: string): Promise<{ s
   });
 
   await upload.done();
-  return { size: contentLength ?? 0 };
+  return { size: contentLength ?? 0, mime: contentType };
 }
 
 // Lazy SigV4 signer — only built when S3_PUBLIC_ENDPOINT is configured.
@@ -113,9 +143,18 @@ async function presignAgainstCustomDomain(key: string, ttlSeconds: number): Prom
 
 // Generates a fresh presigned GET URL. Routes through the custom-domain signer
 // when S3_PUBLIC_ENDPOINT is configured, otherwise the standard SDK presigner.
-export async function getPresignedUrl(key: string, ttlSeconds?: number): Promise<string> {
+//
+// `opts.forceStandardEndpoint` bypasses the custom-domain path unconditionally.
+// Use this when the signed URL must be consumed by an *external* service
+// (e.g. Meitu's asset ingest) — the custom-domain alias path is currently
+// unreliable for third-party callers; see /Users/xiongtengyan probing notes.
+export async function getPresignedUrl(
+  key: string,
+  ttlSeconds?: number,
+  opts?: { forceStandardEndpoint?: boolean },
+): Promise<string> {
   const ttl = ttlSeconds ?? config.S3_PRESIGN_TTL_SECONDS;
-  if (config.S3_PUBLIC_ENDPOINT) {
+  if (config.S3_PUBLIC_ENDPOINT && !opts?.forceStandardEndpoint) {
     return presignAgainstCustomDomain(key, ttl);
   }
   const cmd = new GetObjectCommand({
