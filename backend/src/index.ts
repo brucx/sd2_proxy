@@ -85,12 +85,18 @@ startCronJobs();
 setupInitialAdmin().then(() => loadConcurrencyCache());
 
 // Cache static files for 2 hours
+const NO_CACHE_PAGES = new Set(['/', '/login', '/dashboard', '/playground']);
 app.use('/*', async (c, next) => {
   await next();
-  // Only set cache for non-API, successful responses with content.
-  // Exclude /v/* so the video-redirect endpoint keeps its own private-cache
-  // header — we don't want shared caches hoarding signed upstream URLs.
   const path = c.req.path;
+  // HTML page routes must not be cached so users always get the latest SPA
+  // shell after a deployment.
+  if (NO_CACHE_PAGES.has(path)) {
+    c.header('Cache-Control', 'no-store, no-cache, must-revalidate');
+    c.header('Pragma', 'no-cache');
+    return;
+  }
+  // Exclude /api/* (handled above) and /v/* (has its own private-cache header)
   if (!path.startsWith('/api/') && !path.startsWith('/v/')) {
     c.header('Cache-Control', 'public, max-age=7200');
   }
