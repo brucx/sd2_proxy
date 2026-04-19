@@ -132,7 +132,9 @@ export default function AssetManagement() {
       };
       const res = await api.post('/admin/assets/public', body);
       const result = res.data?.Result || res.data || {};
-      setPublicAssets(result.Items || []);
+      const rawItems = result.Items || [];
+      const formattedItems = rawItems.map((item: any) => item.AssetGroup || item);
+      setPublicAssets(formattedItems);
       setPublicTotal(result.Total || result.TotalCount || 0);
       setPublicPage(result.PageNum || result.PageNumber || page);
     } catch (err: any) {
@@ -492,21 +494,44 @@ export default function AssetManagement() {
             {publicAssets.map(group => (
               <div key={group.SID} className="border border-gray-100 rounded-lg p-3 hover:shadow-md transition-shadow bg-white">
                 <div className="flex justify-between items-start mb-1.5">
-                  <h4 className="text-sm font-medium text-gray-800 line-clamp-1">{group.Title || group.SID}</h4>
+                  <h4 className="text-sm font-medium text-gray-800 line-clamp-1" title={group.Title || group.SID}>{group.Title || group.SID}</h4>
                   {group.Score !== undefined && (
-                    <span className="text-xs text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded whitespace-nowrap">
+                    <span className="text-xs text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded whitespace-nowrap ml-2">
                       ⭐ {group.Score.toFixed(1)}
                     </span>
                   )}
                 </div>
-                {group.Description && (
-                  <p className="text-xs text-gray-500 line-clamp-2 mb-2">{group.Description}</p>
+                {/* Thumbnail Display */}
+                {group.Content?.Image?.[0]?.URL && (
+                  <div className="mb-2 rounded-md overflow-hidden h-40 bg-gray-100 flex items-center justify-center relative group/img">
+                    <img
+                      src={group.Content.Image[0].URL}
+                      alt={group.Title || 'Asset Thumbnail'}
+                      className="w-full h-full object-cover object-center group-hover/img:scale-105 transition-transform duration-300"
+                      loading="lazy"
+                    />
+                  </div>
                 )}
-                <div className="flex items-center justify-between">
+                {/* Fallback for Video if it exists over image */}
+                {!group.Content?.Image?.[0]?.URL && group.Content?.Video?.[0]?.URL && (
+                  <div className="mb-2 rounded-md overflow-hidden h-40 bg-gray-100 flex items-center justify-center relative">
+                    <video
+                      src={group.Content.Video[0].URL}
+                      className="w-full h-full object-cover"
+                      controls
+                      preload="metadata"
+                    />
+                  </div>
+                )}
+                {group.Description && (
+                  <p className="text-xs text-gray-500 line-clamp-2 mb-2" title={group.Description}>{group.Description}</p>
+                )}
+                <div className="flex items-center justify-between mt-auto pt-2">
                   <span className="text-xs text-gray-400 font-mono truncate max-w-[140px]" title={group.SID}>{group.SID}</span>
                   <button
                     onClick={() => navigator.clipboard.writeText(group.SID)}
                     className="text-xs text-gray-500 hover:text-blue-600 transition-colors"
+                    title="复制 SID"
                   >
                     📋 复制ID
                   </button>
