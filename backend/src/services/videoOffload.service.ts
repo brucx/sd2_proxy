@@ -1,6 +1,6 @@
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { eq, and, sql, or, isNull, lt } from 'drizzle-orm';
+import { eq, and, sql, or, isNull, isNotNull, lt } from 'drizzle-orm';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.util.js';
 import { isS3Enabled, buildObjectKey, kickoffUpload } from '../utils/s3.util.js';
@@ -83,7 +83,6 @@ export async function maybeKickoffUpload(log: {
 export async function retryFailedUploads(batchSize = 10): Promise<number> {
   if (!isS3Enabled()) return 0;
 
-  const now = new Date();
   const candidates = await db.select({
     id: schema.usageLogs.id,
     taskId: schema.usageLogs.taskId,
@@ -98,13 +97,15 @@ export async function retryFailedUploads(batchSize = 10): Promise<number> {
         isNull(schema.usageLogs.s3UploadStatus),
         eq(schema.usageLogs.s3UploadStatus, 'failed'),
       ),
-      // Source still reachable: either no expiry (evolink) or expiry in future
+      // Source still reachable: either no expiry (evolink) or expiry in future.
+      // Use SQL `now()` instead of a bound Date param — postgres@3.4.8 rejects
+      // Date bindings for `timestamp without time zone` in this nested-or shape.
       or(
         isNull(schema.usageLogs.upstreamVideoExpiresAt),
-        sql`${schema.usageLogs.upstreamVideoExpiresAt} > ${now}`,
+        sql`${schema.usageLogs.upstreamVideoExpiresAt} > now()`,
       ),
       // We have something to upload
-      sql`${schema.usageLogs.upstreamVideoUrl} IS NOT NULL`,
+      isNotNull(schema.usageLogs.upstreamVideoUrl),
       lt(schema.usageLogs.s3UploadAttempts, config.S3_UPLOAD_MAX_ATTEMPTS),
     ))
     .limit(batchSize);

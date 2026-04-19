@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import { db } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { eq, and, sql, lt } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { config } from '../config.js';
 import { calculateCost } from '../utils/cost.util.js';
 import { getProvider } from '../providers/index.js';
@@ -249,9 +249,11 @@ export function startCronJobs() {
         logger.error({ err }, 'S3 upload retry pass error');
       }
 
-      // Cleanup request logs older than 30 days
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      const deleteResult = await db.delete(schema.requestLogs).where(lt(schema.requestLogs.createdAt, thirtyDaysAgo));
+      // Cleanup request logs older than 30 days. Use SQL `now()` instead of
+      // a bound Date param — postgres@3.4.8 rejects Date bindings for
+      // `timestamp without time zone` columns (see videoOffload.service.ts).
+      const deleteResult = await db.delete(schema.requestLogs)
+        .where(sql`${schema.requestLogs.createdAt} < now() - interval '30 days'`);
       // Drizzle delete result depends on driver, but we don't necessarily need to log the count unless we use returning() or postgres allows it.
 
     } catch (error) {
