@@ -197,7 +197,10 @@ export const createHandler = async (c: any) => {
     if (result.statusCode >= 200 && result.statusCode < 300 && result.upstreamTaskId) {
       taskId = generateTaskId();
 
-      const evolinkFields = provider === 'evolink'
+      // All providers persist videoQuality — it drives the Ark pricing matrix
+      // (quality × hasVideo × fast-family) at terminal settlement for ark/meitu
+      // and the display-layer `rate_cny_per_million` for every provider.
+      const providerFields = provider === 'evolink'
         ? {
             videoDuration: body.duration || null,
             videoQuality: body.quality || body.resolution || '720p',
@@ -211,9 +214,7 @@ export const createHandler = async (c: any) => {
             videoDuration: body.duration || null,
             videoQuality: body.resolution || body.quality || '720p',
           }
-        : provider === 'ark'
-        ? { videoQuality: body.resolution || '720p' }
-        : {};
+        : { videoQuality: body.resolution || body.quality || '720p' };
 
       await db.insert(schema.usageLogs).values({
         userId: keyRecord.userId,
@@ -225,7 +226,7 @@ export const createHandler = async (c: any) => {
         status: 'pending',
         provider,
         autoMode,
-        ...evolinkFields,
+        ...providerFields,
         requestBody: originalBody.substring(0, 8192),
         upstreamCreateRaw: result.upstreamRaw !== undefined ? JSON.stringify(result.upstreamRaw) : null,
       });

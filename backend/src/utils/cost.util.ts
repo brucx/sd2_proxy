@@ -15,14 +15,10 @@ export function detectVideoInput(body: any): boolean {
   }
 }
 
-// -- Meitu billing: per completion_tokens --
-export function calculateMeituCost(completionTokens: number, hasVideo: boolean): string {
-  const pricePerToken = (hasVideo ? config.PRICE_WITH_VIDEO : config.PRICE_WITHOUT_VIDEO) / 1_000_000;
-  return (completionTokens * pricePerToken).toFixed(6);
-}
-
 // -- Ark billing: per completion_tokens, varies by model variant, hasVideo, quality --
 // See docs/ark/pricing.md.
+// Meitu is an Ark passthrough proxy — same upstream tokens, same pricing rules.
+// Both providers share this function; see calculateCost below.
 export function calculateArkCost(
   completionTokens: number,
   hasVideo: boolean,
@@ -92,14 +88,6 @@ export function calculateCost(
     }
     return calculateEvolinkCost(params.duration || 5, params.quality || '720p');
   }
-  if (provider === 'ark') {
-    return calculateArkCost(
-      params.completionTokens || 0,
-      params.hasVideo || false,
-      params.quality || '720p',
-      params.model || '',
-    );
-  }
   if (provider === 'aivideo') {
     return calculateAivideoCost(
       params.duration || 5,
@@ -107,6 +95,12 @@ export function calculateCost(
       params.hasVideo || false,
     );
   }
-  return calculateMeituCost(params.completionTokens || 0, params.hasVideo || false);
+  // ark + meitu: meitu is an Ark passthrough, same upstream tokens & pricing matrix.
+  return calculateArkCost(
+    params.completionTokens || 0,
+    params.hasVideo || false,
+    params.quality || '720p',
+    params.model || '',
+  );
 }
 
