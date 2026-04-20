@@ -372,6 +372,28 @@ adminRoutes.post('/users/:id/balance', async (c) => {
   return c.json({ success: true, balance: updatedUser[0]?.balance || '0' });
 });
 
+// Admin: Get user balance audit records
+adminRoutes.get('/users/:id/balance-audit', async (c) => {
+  const userId = parseInt(c.req.param('id'));
+  const targetUser = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+  if (targetUser.length === 0) return c.json({ error: 'User not found' }, 404);
+
+  const records = await db
+    .select({
+      id: schema.balanceAudit.id,
+      amount: schema.balanceAudit.amount,
+      description: schema.balanceAudit.description,
+      operatorUsername: schema.users.username,
+      createdAt: schema.balanceAudit.createdAt,
+    })
+    .from(schema.balanceAudit)
+    .leftJoin(schema.users, eq(schema.balanceAudit.operatorId, schema.users.id))
+    .where(eq(schema.balanceAudit.userId, userId))
+    .orderBy(desc(schema.balanceAudit.createdAt));
+
+  return c.json({ records });
+});
+
 // Admin: Get All Usage
 adminRoutes.get('/usage', async (c) => {
   const page = parseInt(c.req.query('page') || '1');

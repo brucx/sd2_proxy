@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { api } from '../api';
 
 interface Props {
@@ -18,6 +18,9 @@ export default function AdminUsersPanel({ users, onRefresh }: Props) {
   const [topUpAmount, setTopUpAmount] = useState('');
   const [topUpDesc, setTopUpDesc] = useState('');
   const [topUpMsg, setTopUpMsg] = useState('');
+  const [expandedUserId, setExpandedUserId] = useState<number | null>(null);
+  const [userRecords, setUserRecords] = useState<any[]>([]);
+  const [isLoadingRecords, setIsLoadingRecords] = useState(false);
 
   const createUser = async () => {
     if (!newUserName || !newUserPass) return;
@@ -80,6 +83,24 @@ export default function AdminUsersPanel({ users, onRefresh }: Props) {
     }
   };
 
+  const toggleUserRecords = async (userId: number) => {
+    if (expandedUserId === userId) {
+      setExpandedUserId(null);
+      setUserRecords([]);
+    } else {
+      setExpandedUserId(userId);
+      setIsLoadingRecords(true);
+      try {
+        const { data } = await api.get(`/admin/users/${userId}/balance-audit`);
+        setUserRecords(data.records || []);
+      } catch (err: any) {
+        alert(err.response?.data?.error || 'Load records failed');
+      } finally {
+        setIsLoadingRecords(false);
+      }
+    }
+  };
+
   return (
     <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
       <h2 className="text-xl font-bold mb-4">Users Management</h2>
@@ -95,9 +116,14 @@ export default function AdminUsersPanel({ users, onRefresh }: Props) {
         </thead>
         <tbody>
           {users.map(u => (
-            <tr key={u.id} className="border-b">
+            <React.Fragment key={u.id}>
+            <tr className="border-b">
               <td className="p-2">{u.id}</td>
-              <td className="p-2">{u.username}</td>
+              <td className="p-2">
+                <span onClick={() => toggleUserRecords(u.id)} className="cursor-pointer text-blue-600 hover:underline">
+                  {u.username}
+                </span>
+              </td>
               <td className="p-2">{u.role}</td>
               <td className="p-2">
                 <button onClick={() => toggleUserStatus(u.id)} className={`inline-block px-2 py-0.5 rounded text-xs font-medium cursor-pointer ${u.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
@@ -164,6 +190,48 @@ export default function AdminUsersPanel({ users, onRefresh }: Props) {
                 )}
               </td>
             </tr>
+            {expandedUserId === u.id && (
+              <tr className="bg-gray-50 border-b">
+                <td colSpan={8} className="p-4">
+                  <div className="text-sm">
+                    <div className="font-semibold mb-2">充值记录 (Balance Audit)</div>
+                    {isLoadingRecords ? (
+                      <div className="text-gray-500 py-2">Loading...</div>
+                    ) : userRecords.length === 0 ? (
+                      <div className="text-gray-500 py-2">暂无充值记录</div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left bg-white border border-gray-200 rounded">
+                          <thead className="bg-gray-100">
+                            <tr>
+                              <th className="p-2 border-b text-xs font-medium text-gray-500">时间</th>
+                              <th className="p-2 border-b text-xs font-medium text-gray-500">记录ID</th>
+                              <th className="p-2 border-b text-xs font-medium text-gray-500">金额</th>
+                              <th className="p-2 border-b text-xs font-medium text-gray-500">操作人</th>
+                              <th className="p-2 border-b text-xs font-medium text-gray-500">备注</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {userRecords.map(r => (
+                              <tr key={r.id} className="border-b last:border-0 hover:bg-gray-50 transition-colors">
+                                <td className="p-2 text-gray-600">{new Date(r.createdAt).toLocaleString()}</td>
+                                <td className="p-2 text-gray-500">#{r.id}</td>
+                                <td className={`p-2 font-mono ${parseFloat(r.amount) > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                  {parseFloat(r.amount) > 0 ? '+' : ''}{parseFloat(r.amount).toFixed(2)}
+                                </td>
+                                <td className="p-2 text-gray-600">{r.operatorUsername || 'System'}</td>
+                                <td className="p-2 text-gray-600">{r.description}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            )}
+            </React.Fragment>
           ))}
         </tbody>
       </table>
@@ -172,7 +240,7 @@ export default function AdminUsersPanel({ users, onRefresh }: Props) {
         {users.map(u => (
           <div key={u.id} className="border border-gray-100 rounded-lg p-4 bg-gray-50 shadow-sm flex flex-col gap-2">
             <div className="flex justify-between items-center">
-              <span className="font-semibold text-gray-800">{u.username}</span>
+              <span onClick={() => toggleUserRecords(u.id)} className="font-semibold text-blue-600 hover:underline cursor-pointer">{u.username}</span>
               <span className="text-xs text-gray-500 bg-gray-200 px-2 py-1 rounded">ID: {u.id}</span>
             </div>
             <div className="text-sm text-gray-600">Created: {new Date(u.createdAt).toLocaleDateString()}</div>
@@ -242,6 +310,32 @@ export default function AdminUsersPanel({ users, onRefresh }: Props) {
                 <button onClick={() => { setResetUserId(u.id); setResetPwd(''); setResetMsg(''); }} className="text-orange-600 hover:underline text-sm">重置密码</button>
               )}
             </div>
+            {/* Mobile Expanded Records */}
+            {expandedUserId === u.id && (
+              <div className="pt-2 border-t border-gray-200 mt-1">
+                <div className="font-semibold mb-2 text-sm text-gray-700">充值记录</div>
+                {isLoadingRecords ? (
+                  <div className="text-gray-500 text-sm">Loading...</div>
+                ) : userRecords.length === 0 ? (
+                  <div className="text-gray-500 text-sm">暂无记录</div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {userRecords.map(r => (
+                      <div key={r.id} className="bg-white p-2 rounded border border-gray-100 text-sm shadow-sm">
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="text-gray-500 text-xs">{new Date(r.createdAt).toLocaleString()}</span>
+                          <span className={`font-mono font-medium ${parseFloat(r.amount) > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            {parseFloat(r.amount) > 0 ? '+' : ''}{parseFloat(r.amount).toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="text-gray-700">{r.description}</div>
+                        <div className="text-gray-400 text-xs mt-1">操作人: {r.operatorUsername || 'System'} (#{r.id})</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ))}
       </div>
