@@ -166,7 +166,7 @@ export const materialProviderRefs = pgTable('material_provider_refs', {
   upstreamAssetId: text('upstream_asset_id'),
   upstreamUrl: text('upstream_url'),                             // provider's presigned URL (e.g. Meitu's 12h TOS link)
   upstreamStatus: varchar('upstream_status', { length: 16 }),    // 'Processing' | 'Active' | 'Failed' (raw from upstream)
-  syncStatus: varchar('sync_status', { length: 16 }).notNull().default('pending'), // 'pending' | 'done' | 'failed'
+  syncStatus: varchar('sync_status', { length: 16 }).notNull().default('pending'), // 'pending' | 'claiming' | 'done' | 'failed' (retriable) | 'rejected' (terminal, e.g. copyright)
   syncAttempts: integer('sync_attempts').notNull().default(0),
   lastError: text('last_error'),
   syncedAt: timestamp('synced_at'),

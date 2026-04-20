@@ -92,7 +92,11 @@ function computeAggregateStatus(
 ): { status: 'Processing' | 'Active' | 'Failed'; reason: string | null } {
   if (s3Status === 'failed') return { status: 'Failed', reason: 's3_upload_failed' };
   if (meitu) {
-    if (meitu.upstreamStatus === 'Failed' || meitu.syncStatus === 'failed') {
+    if (
+      meitu.upstreamStatus === 'Failed'
+      || meitu.syncStatus === 'failed'
+      || meitu.syncStatus === 'rejected'
+    ) {
       return { status: 'Failed', reason: meitu.lastError || 'meitu_sync_failed' };
     }
     if (s3Status === 'ready' && meitu.upstreamStatus === 'Active') {
@@ -230,6 +234,20 @@ async function kickoffMeituSync(materialId: string): Promise<void> {
       await recomputeAggregateStatus(materialId);
       return;
     }
+    if (existingRef.upstreamStatus === 'Failed') {
+      // Upstream already rejected (e.g. copyright). Terminal — migrate any
+      // legacy 'failed' rows to 'rejected' so the cron stops re-polling.
+      if (existingRef.syncStatus !== 'rejected') {
+        await db.update(schema.materialProviderRefs)
+          .set({ syncStatus: 'rejected', updatedAt: new Date() })
+          .where(and(
+            eq(schema.materialProviderRefs.materialId, materialId),
+            eq(schema.materialProviderRefs.provider, 'meitu'),
+          ));
+        await recomputeAggregateStatus(materialId);
+      }
+      return;
+    }
     await db.update(schema.materialProviderRefs)
       .set({
         syncStatus: 'pending',
@@ -360,7 +378,10 @@ async function pollMeituAsset(material: Material, upstreamId: string): Promise<v
           .set({
             upstreamStatus,
             upstreamUrl: upstreamUrl || null,
-            syncStatus: upstreamStatus === 'Active' ? 'done' : 'failed',
+            // 'rejected' is a terminal upstream decision (e.g. copyright).
+            // Cron retry scan filters by ['pending','failed'] so rejected
+            // rows are naturally excluded from future attempts.
+            syncStatus: upstreamStatus === 'Active' ? 'done' : 'rejected',
             lastError,
             syncedAt: new Date(),
             updatedAt: new Date(),
@@ -603,7 +624,7 @@ export async function resolveForProvider(
   if (material.s3Status !== 'ready') return { kind: 'not_ready', reason: 'ingest_in_progress' };
 
   if (provider === 'meitu') {
-    if (!meitu || meitu.syncStatus === 'failed') {
+    if (!meitu || meitu.syncStatus === 'failed' || meitu.syncStatus === 'rejected') {
       return { kind: 'not_ready', reason: meitu?.lastError || 'meitu_sync_failed' };
     }
     if (meitu.upstreamStatus !== 'Active' || !meitu.upstreamAssetId) {
