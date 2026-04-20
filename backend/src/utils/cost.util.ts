@@ -1,10 +1,15 @@
 import { config } from '../config.js';
 
-// Detect if request body contains video input
+// Detect if request body contains video input.
+// Accepts both Ark-shape (`content[]` with video_url items) and flat-array
+// shape (`body.video_urls`) since aivideoapi / evolink clients can use either.
 export function detectVideoInput(body: any): boolean {
   try {
     const contents = body?.content || [];
-    return Array.isArray(contents) && contents.some((item: any) => item.type === 'video_url' || item.type === 'video');
+    const fromContent = Array.isArray(contents)
+      && contents.some((item: any) => item.type === 'video_url' || item.type === 'video');
+    if (fromContent) return true;
+    return Array.isArray(body?.video_urls) && body.video_urls.length > 0;
   } catch {
     return false;
   }
@@ -53,6 +58,20 @@ export function calculateEvolinkCost(duration: number, quality: string): string 
   return cnyCost.toFixed(6);
 }
 
+// -- Aivideoapi.ai billing: per-second, split by hasVideo × resolution --
+// Source: docs/aivideo/aivideo.md pricing table. For with-video calls the
+// upstream bills `(input_video_duration + output_duration) × rate`; since we
+// don't surface the input video duration anywhere, we approximate with
+// output-only — this undercounts by a few seconds on video-reference calls.
+export function calculateAivideoCost(duration: number, quality: string, hasVideo: boolean): string {
+  const q = ['480p', '720p', '1080p'].includes(quality) ? quality : '720p';
+  const key = `${hasVideo}:${q}`;
+  const table = config.AIVIDEO_PRICE_PER_SECOND_USD;
+  const rate = table[key] ?? table[`${hasVideo}:720p`] ?? (hasVideo ? 0.125 : 0.21);
+  const cnyCost = duration * rate! * config.USD_TO_CNY_RATE;
+  return cnyCost.toFixed(6);
+}
+
 // -- Unified cost calculator --
 export function calculateCost(
   provider: string,
@@ -79,6 +98,13 @@ export function calculateCost(
       params.hasVideo || false,
       params.quality || '720p',
       params.model || '',
+    );
+  }
+  if (provider === 'aivideo') {
+    return calculateAivideoCost(
+      params.duration || 5,
+      params.quality || '720p',
+      params.hasVideo || false,
     );
   }
   return calculateMeituCost(params.completionTokens || 0, params.hasVideo || false);

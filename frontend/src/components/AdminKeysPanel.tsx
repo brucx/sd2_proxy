@@ -112,6 +112,7 @@ export default function AdminKeysPanel({ users }: Props) {
             <option value="meitu">Meitu</option>
             <option value="evolink">Evolink</option>
             <option value="ark">Ark</option>
+            <option value="aivideo">Aivideo</option>
             <option value="auto">Auto (Meitu→Evolink)</option>
           </select>
         </div>
@@ -153,6 +154,7 @@ export default function AdminKeysPanel({ users }: Props) {
                   <option value="meitu">Meitu</option>
                   <option value="evolink">Evolink</option>
                   <option value="ark">Ark</option>
+                  <option value="aivideo">Aivideo</option>
                   <option value="auto">Auto</option>
                 </select>
               </td>
@@ -207,6 +209,7 @@ export default function AdminKeysPanel({ users }: Props) {
                 <option value="meitu">Meitu</option>
                 <option value="evolink">Evolink</option>
                 <option value="ark">Ark</option>
+                <option value="aivideo">Aivideo</option>
                 <option value="auto">Auto</option>
               </select>
               <span className="ml-2">video_url:</span>

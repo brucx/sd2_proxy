@@ -78,6 +78,29 @@ export const config = {
         'doubao-seedance-2-0-260128': 'seedance-2.0',
       } as Record<string, string>,
 
+  // -- Aivideoapi.ai Provider --
+  AIVIDEO_API_KEY: process.env.AIVIDEO_API_KEY || '',
+  AIVIDEO_URL: process.env.AIVIDEO_URL || 'https://api.aivideoapi.ai',
+  // User-facing alias → aivideoapi.ai model name. Aivideoapi only exposes the
+  // standard doubao-seedance-2.0 line (no "fast" variant as of docs/aivideo).
+  AIVIDEO_MODEL_MAPPING: process.env.AIVIDEO_MODEL_MAPPING
+    ? JSON.parse(process.env.AIVIDEO_MODEL_MAPPING)
+    : {
+        'doubao-seedance-2-0': 'doubao-seedance-2.0',
+        'doubao-seedance-2-0-260128': 'doubao-seedance-2.0',
+        'doubao-seedance-2.0': 'doubao-seedance-2.0',
+      } as Record<string, string>,
+  // Aivideoapi per-second USD rates. hasVideo switches between the two tiers.
+  // Source: docs/aivideo/aivideo.md pricing table.
+  AIVIDEO_PRICE_PER_SECOND_USD: {
+    'false:480p': 0.10,
+    'false:720p': 0.21,
+    'false:1080p': 0.51,
+    'true:480p': 0.06,
+    'true:720p': 0.125,
+    'true:1080p': 0.31,
+  } as Record<string, number>,
+
   // -- Ark (Volcengine) Provider --
   ARK_API_KEY: process.env.ARK_API_KEY || '',
   ARK_URL: process.env.ARK_URL || 'https://ark.cn-beijing.volces.com',

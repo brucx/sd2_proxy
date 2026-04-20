@@ -353,14 +353,15 @@ async function pollMeituAsset(material: Material, upstreamId: string): Promise<v
       const groupId: string = r.GroupId || '';
 
       if (upstreamStatus === 'Active' || upstreamStatus === 'Failed') {
+        const lastError = upstreamStatus === 'Failed'
+          ? (r.Error?.Message || r.Error?.Code || 'rejected by meitu')
+          : null;
         await db.update(schema.materialProviderRefs)
           .set({
             upstreamStatus,
             upstreamUrl: upstreamUrl || null,
             syncStatus: upstreamStatus === 'Active' ? 'done' : 'failed',
-            lastError: upstreamStatus === 'Failed'
-              ? (r.Error?.Message || r.Error?.Code || 'rejected by meitu')
-              : null,
+            lastError,
             syncedAt: new Date(),
             updatedAt: new Date(),
           })
@@ -377,7 +378,14 @@ async function pollMeituAsset(material: Material, upstreamId: string): Promise<v
             ));
         }
         await recomputeAggregateStatus(material.id);
-        logger.info(`[meitu-sync] ${material.id} → ${upstreamStatus}`);
+        if (upstreamStatus === 'Failed') {
+          logger.warn(
+            { materialId: material.id, upstreamId, lastError, errorCode: r.Error?.Code },
+            `[meitu-sync] ${material.id} → Failed: ${lastError}`,
+          );
+        } else {
+          logger.info(`[meitu-sync] ${material.id} → ${upstreamStatus}`);
+        }
         return;
       }
       if (i < MEITU_POLL_MAX - 1) await sleep(MEITU_POLL_INTERVAL_MS);

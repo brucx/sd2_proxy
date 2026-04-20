@@ -203,6 +203,14 @@ export const createHandler = async (c: any) => {
             videoQuality: body.quality || body.resolution || '720p',
             creditsReserved: typeof result.credits === 'number' ? String(result.credits) : null,
           }
+        : provider === 'aivideo'
+        ? {
+            // aivideoapi bills per-second like evolink. Persist the same billing
+            // inputs so the terminal poll can settle without re-parsing the
+            // request body.
+            videoDuration: body.duration || null,
+            videoQuality: body.resolution || body.quality || '720p',
+          }
         : provider === 'ark'
         ? { videoQuality: body.resolution || '720p' }
         : {};
@@ -490,11 +498,12 @@ export const getResultHandler = async (c: any) => {
             ...(typeof storedCredits === 'number' ? { credits: storedCredits } : {}),
           });
 
-          // Evolink charges in credits. Reverse-map the actual CNY cost into
-          // an Ark-equivalent token count so the client sees a uniform
-          // `cost = tokens × rate / 1e6` contract. Billing is still driven by
-          // credits_reserved; these tokens are display-only.
-          if (logProvider === 'evolink') {
+          // Evolink/Aivideo charge per-second (credits or USD). Reverse-map
+          // the actual CNY cost into an Ark-equivalent token count so the
+          // client sees a uniform `cost = tokens × rate / 1e6` contract.
+          // Billing is still driven by the real per-second formula; these
+          // tokens are display-only.
+          if (logProvider === 'evolink' || logProvider === 'aivideo') {
             const synthetic = reverseTokensFromCost({
               costYuan: parseFloat(cost),
               model: userModel,

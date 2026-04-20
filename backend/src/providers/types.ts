@@ -29,7 +29,7 @@ export interface CancelTaskResult {
 }
 
 export interface UpstreamProvider {
-  name: 'meitu' | 'evolink' | 'ark';
+  name: 'meitu' | 'evolink' | 'ark' | 'aivideo';
   createTask(body: any, userModel: string): Promise<CreateTaskResult>;
   // requestBody: original create-time request, threaded through so providers
   // (e.g. Evolink) can synthesize Ark-shape echo fields the upstream omits.

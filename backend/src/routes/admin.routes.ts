@@ -312,8 +312,8 @@ adminRoutes.put('/users/:id/concurrency', async (c) => {
 adminRoutes.put('/users/:id/provider', async (c) => {
   const userId = parseInt(c.req.param('id'));
   const { provider } = await c.req.json();
-  if (!provider || !['meitu', 'evolink', 'ark', 'auto'].includes(provider)) {
-    return c.json({ error: 'Provider 必须为 meitu / evolink / ark / auto' }, 400);
+  if (!provider || !['meitu', 'evolink', 'ark', 'aivideo', 'auto'].includes(provider)) {
+    return c.json({ error: 'Provider 必须为 meitu / evolink / ark / aivideo / auto' }, 400);
   }
   const targetUser = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
   if (targetUser.length === 0) return c.json({ error: 'User not found' }, 404);
@@ -586,8 +586,8 @@ adminRoutes.get('/keys', async (c) => {
 adminRoutes.post('/keys', async (c) => {
   const { userId, name, expiresAt, provider, videoUrlMode } = await c.req.json();
   if (!userId || !name) return c.json({ error: 'userId and name are required' }, 400);
-  if (provider != null && provider !== '' && !['meitu', 'evolink', 'ark', 'auto'].includes(provider)) {
-    return c.json({ error: 'Provider 必须为 meitu / evolink / ark / auto' }, 400);
+  if (provider != null && provider !== '' && !['meitu', 'evolink', 'ark', 'aivideo', 'auto'].includes(provider)) {
+    return c.json({ error: 'Provider 必须为 meitu / evolink / ark / aivideo / auto' }, 400);
   }
   if (videoUrlMode != null && !['cdn', 'upstream', 's3'].includes(videoUrlMode)) {
     return c.json({ error: 'videoUrlMode 必须为 cdn / upstream / s3' }, 400);
@@ -630,8 +630,8 @@ adminRoutes.put('/keys/:id/provider', async (c) => {
   const keyId = parseInt(c.req.param('id'));
   const { provider } = await c.req.json();
   const next = provider == null || provider === '' ? null : provider;
-  if (next !== null && !['meitu', 'evolink', 'ark', 'auto'].includes(next)) {
-    return c.json({ error: 'Provider 必须为 meitu / evolink / ark / auto' }, 400);
+  if (next !== null && !['meitu', 'evolink', 'ark', 'aivideo', 'auto'].includes(next)) {
+    return c.json({ error: 'Provider 必须为 meitu / evolink / ark / aivideo / auto' }, 400);
   }
 
   const keyRecord = await db.select().from(schema.keys).where(eq(schema.keys.id, keyId)).limit(1);

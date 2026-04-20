@@ -63,8 +63,8 @@ export function rewriteArkVideoUrl(
 }
 
 // Compute the expiration timestamp for the upstream signed URL.
-// ark/meitu: upstream_finished_at + 23h55m (ARK_VIDEO_URL_TTL_MS)
-// evolink:   null (permanent URL from files.evolink.ai)
+// ark / meitu / aivideo: upstream_finished_at + 23h55m (ARK_VIDEO_URL_TTL_MS)
+// evolink:               null (permanent URL from files.evolink.ai)
 export function computeVideoExpiresAt(
   provider: string,
   upstreamFinishedAt: Date | null | undefined,

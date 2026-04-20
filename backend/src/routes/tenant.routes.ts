@@ -86,8 +86,8 @@ tenantRoutes.get('/keys', async (c) => {
 tenantRoutes.post('/keys', async (c) => {
   const user = c.get('user');
   const { name, expiresAt, provider, videoUrlMode } = await c.req.json();
-  if (provider != null && provider !== '' && !['meitu', 'evolink', 'ark', 'auto'].includes(provider)) {
-    return c.json({ error: 'Provider 必须为 meitu / evolink / ark / auto' }, 400);
+  if (provider != null && provider !== '' && !['meitu', 'evolink', 'ark', 'aivideo', 'auto'].includes(provider)) {
+    return c.json({ error: 'Provider 必须为 meitu / evolink / ark / aivideo / auto' }, 400);
   }
   if (videoUrlMode != null && !['cdn', 'upstream', 's3'].includes(videoUrlMode)) {
     return c.json({ error: 'videoUrlMode 必须为 cdn / upstream / s3' }, 400);
@@ -112,8 +112,8 @@ tenantRoutes.put('/keys/:id/provider', async (c) => {
   const keyId = parseInt(c.req.param('id'));
   const { provider } = await c.req.json();
   const next = provider == null || provider === '' ? null : provider;
-  if (next !== null && !['meitu', 'evolink', 'ark', 'auto'].includes(next)) {
-    return c.json({ error: 'Provider 必须为 meitu / evolink / ark / auto' }, 400);
+  if (next !== null && !['meitu', 'evolink', 'ark', 'aivideo', 'auto'].includes(next)) {
+    return c.json({ error: 'Provider 必须为 meitu / evolink / ark / aivideo / auto' }, 400);
   }
 
   const keyRecord = await db.select().from(schema.keys)

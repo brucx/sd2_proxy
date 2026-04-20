@@ -79,11 +79,13 @@ const processPendingTask = async (log: any) => {
             ...(typeof storedCredits === 'number' ? { credits: storedCredits } : {}),
           });
 
-          // Mirror proxy.routes.ts: reverse-map evolink's credit-based cost
-          // into an Ark-equivalent token count so DB `completion_tokens` and
-          // the stored `result_data.usage` stay consistent regardless of
-          // whether the route handler or the cron finalizes this task.
-          if ((log.provider || 'meitu') === 'evolink') {
+          // Mirror proxy.routes.ts: reverse-map per-second cost (evolink
+          // credits, aivideo USD) into an Ark-equivalent token count so DB
+          // `completion_tokens` and the stored `result_data.usage` stay
+          // consistent regardless of whether the route handler or the cron
+          // finalizes this task.
+          const finalizingProvider = log.provider || 'meitu';
+          if (finalizingProvider === 'evolink' || finalizingProvider === 'aivideo') {
             const synthetic = reverseTokensFromCost({
               costYuan: parseFloat(cost),
               model: userModel,
