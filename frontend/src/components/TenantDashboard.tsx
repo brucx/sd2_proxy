@@ -19,7 +19,7 @@ export default function TenantDashboard({
 }: Props) {
   const [newKeyName, setNewKeyName] = useState('');
   const [newKeyProvider, setNewKeyProvider] = useState('');  // '' = inherit user-level
-  const [newKeyReturnCdn, setNewKeyReturnCdn] = useState(true);
+  const [newKeyVideoUrlMode, setNewKeyVideoUrlMode] = useState<'cdn' | 'upstream' | 's3'>('cdn');
   const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
   const [newWhitelistIp, setNewWhitelistIp] = useState('');
   const [whitelistMsg, setWhitelistMsg] = useState('');
@@ -46,11 +46,11 @@ export default function TenantDashboard({
     await api.post('/keys', {
       name: newKeyName,
       ...(newKeyProvider ? { provider: newKeyProvider } : {}),
-      returnCdnVideoUrl: newKeyReturnCdn,
+      videoUrlMode: newKeyVideoUrlMode,
     });
     setNewKeyName('');
     setNewKeyProvider('');
-    setNewKeyReturnCdn(true);
+    setNewKeyVideoUrlMode('cdn');
     onRefresh();
   };
 
@@ -63,9 +63,9 @@ export default function TenantDashboard({
     }
   };
 
-  const updateKeyReturnCdn = async (keyId: number, next: boolean) => {
+  const updateKeyVideoUrlMode = async (keyId: number, next: 'cdn' | 'upstream' | 's3') => {
     try {
-      await api.put(`/keys/${keyId}/return-cdn`, { returnCdnVideoUrl: next });
+      await api.put(`/keys/${keyId}/video-url-mode`, { videoUrlMode: next });
       onRefresh();
     } catch (err: any) {
       alert(err.response?.data?.error || '修改失败');
@@ -237,9 +237,10 @@ export default function TenantDashboard({
           </div>
           <div className="w-full sm:w-auto">
             <label className="block text-sm text-gray-600 mb-1">video_url 返回</label>
-            <select value={newKeyReturnCdn ? 'cdn' : 'raw'} onChange={e => setNewKeyReturnCdn(e.target.value === 'cdn')} className="border px-3 py-2 rounded-md w-full sm:w-auto">
-              <option value="cdn">CDN 链接（默认）</option>
-              <option value="raw">原始链接</option>
+            <select value={newKeyVideoUrlMode} onChange={e => setNewKeyVideoUrlMode(e.target.value as 'cdn' | 'upstream' | 's3')} className="border px-3 py-2 rounded-md w-full sm:w-auto">
+              <option value="cdn">CDN 中转链接（默认）</option>
+              <option value="upstream">上游原始链接</option>
+              <option value="s3">S3 签名链接</option>
             </select>
           </div>
           <button onClick={createKey} className="bg-blue-600 text-white px-4 py-2 rounded-md w-full sm:w-auto">Create Key</button>
@@ -275,13 +276,14 @@ export default function TenantDashboard({
                 </td>
                 <td className="p-2 text-sm">
                   <select
-                    value={k.returnCdnVideoUrl === false ? 'raw' : 'cdn'}
-                    onChange={(e) => updateKeyReturnCdn(k.id, e.target.value === 'cdn')}
+                    value={k.videoUrlMode || 'cdn'}
+                    onChange={(e) => updateKeyVideoUrlMode(k.id, e.target.value as 'cdn' | 'upstream' | 's3')}
                     className="border border-gray-200 px-2 py-1 rounded text-xs bg-gray-50 hover:bg-gray-100 focus:bg-white transition-colors cursor-pointer outline-none focus:border-blue-300"
-                    title="video_url 返回 CDN 链接还是上游原始链接"
+                    title="video_url 返回形式：CDN 中转 / 上游原始 / S3 签名"
                   >
-                    <option value="cdn">CDN 链接</option>
-                    <option value="raw">原始链接</option>
+                    <option value="cdn">CDN 中转</option>
+                    <option value="upstream">上游原始</option>
+                    <option value="s3">S3 签名</option>
                   </select>
                 </td>
                 <td className="p-2 text-sm">
@@ -338,12 +340,13 @@ export default function TenantDashboard({
                 </div>
                 <div className="flex items-center gap-1">video_url:
                   <select
-                    value={k.returnCdnVideoUrl === false ? 'raw' : 'cdn'}
-                    onChange={(e) => updateKeyReturnCdn(k.id, e.target.value === 'cdn')}
+                    value={k.videoUrlMode || 'cdn'}
+                    onChange={(e) => updateKeyVideoUrlMode(k.id, e.target.value as 'cdn' | 'upstream' | 's3')}
                     className="border border-gray-200 px-1 py-0.5 rounded text-xs bg-gray-50 outline-none focus:border-blue-300"
                   >
                     <option value="cdn">CDN</option>
-                    <option value="raw">原始</option>
+                    <option value="upstream">原始</option>
+                    <option value="s3">S3</option>
                   </select>
                 </div>
                 <span>配额: {k.quotaLimit !== null && k.quotaLimit !== undefined

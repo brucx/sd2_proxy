@@ -573,7 +573,7 @@ adminRoutes.get('/keys', async (c) => {
       expiresAt: schema.keys.expiresAt,
       provider: schema.keys.provider,
       userProvider: schema.users.provider,
-      returnCdnVideoUrl: schema.keys.returnCdnVideoUrl,
+      videoUrlMode: schema.keys.videoUrlMode,
       createdAt: schema.keys.createdAt,
     })
     .from(schema.keys)
@@ -584,10 +584,13 @@ adminRoutes.get('/keys', async (c) => {
 
 // Admin: Create key for user
 adminRoutes.post('/keys', async (c) => {
-  const { userId, name, expiresAt, provider, returnCdnVideoUrl } = await c.req.json();
+  const { userId, name, expiresAt, provider, videoUrlMode } = await c.req.json();
   if (!userId || !name) return c.json({ error: 'userId and name are required' }, 400);
   if (provider != null && provider !== '' && !['meitu', 'evolink', 'ark', 'auto'].includes(provider)) {
     return c.json({ error: 'Provider 必须为 meitu / evolink / ark / auto' }, 400);
+  }
+  if (videoUrlMode != null && !['cdn', 'upstream', 's3'].includes(videoUrlMode)) {
+    return c.json({ error: 'videoUrlMode 必须为 cdn / upstream / s3' }, 400);
   }
 
   const targetUser = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
@@ -601,23 +604,23 @@ adminRoutes.post('/keys', async (c) => {
     name,
     ...(expiresAt ? { expiresAt: new Date(expiresAt) } : {}),
     ...(provider ? { provider } : {}),
-    ...(typeof returnCdnVideoUrl === 'boolean' ? { returnCdnVideoUrl } : {}),
+    ...(videoUrlMode ? { videoUrlMode } : {}),
   });
   return c.json({ success: true, apiKey });
 });
 
-// Admin: Update key video_url return mode (true → our CDN /v URL, false → upstream raw URL)
-adminRoutes.put('/keys/:id/return-cdn', async (c) => {
+// Admin: Update key video_url mode (cdn → our /v endpoint, upstream → raw upstream URL, s3 → our S3 presigned URL)
+adminRoutes.put('/keys/:id/video-url-mode', async (c) => {
   const keyId = parseInt(c.req.param('id'));
-  const { returnCdnVideoUrl } = await c.req.json();
-  if (typeof returnCdnVideoUrl !== 'boolean') {
-    return c.json({ error: 'returnCdnVideoUrl 必须为布尔值' }, 400);
+  const { videoUrlMode } = await c.req.json();
+  if (!['cdn', 'upstream', 's3'].includes(videoUrlMode)) {
+    return c.json({ error: 'videoUrlMode 必须为 cdn / upstream / s3' }, 400);
   }
 
   const keyRecord = await db.select().from(schema.keys).where(eq(schema.keys.id, keyId)).limit(1);
   if (keyRecord.length === 0) return c.json({ error: 'Key not found' }, 404);
 
-  await db.update(schema.keys).set({ returnCdnVideoUrl }).where(eq(schema.keys.id, keyId));
+  await db.update(schema.keys).set({ videoUrlMode }).where(eq(schema.keys.id, keyId));
   clearKeyCache();
   return c.json({ success: true });
 });

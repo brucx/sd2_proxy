@@ -85,9 +85,12 @@ tenantRoutes.get('/keys', async (c) => {
 // user-level provider at request time. When provided, it must be a valid value.
 tenantRoutes.post('/keys', async (c) => {
   const user = c.get('user');
-  const { name, expiresAt, provider, returnCdnVideoUrl } = await c.req.json();
+  const { name, expiresAt, provider, videoUrlMode } = await c.req.json();
   if (provider != null && provider !== '' && !['meitu', 'evolink', 'ark', 'auto'].includes(provider)) {
     return c.json({ error: 'Provider 必须为 meitu / evolink / ark / auto' }, 400);
+  }
+  if (videoUrlMode != null && !['cdn', 'upstream', 's3'].includes(videoUrlMode)) {
+    return c.json({ error: 'videoUrlMode 必须为 cdn / upstream / s3' }, 400);
   }
   const { v4: uuidv4 } = await import('uuid');
   const apiKey = `sk-${uuidv4().replace(/-/g, '')}`;
@@ -98,7 +101,7 @@ tenantRoutes.post('/keys', async (c) => {
     name,
     ...(expiresAt ? { expiresAt: new Date(expiresAt) } : {}),
     ...(provider ? { provider } : {}),
-    ...(typeof returnCdnVideoUrl === 'boolean' ? { returnCdnVideoUrl } : {}),
+    ...(videoUrlMode ? { videoUrlMode } : {}),
   });
   return c.json({ success: true, apiKey });
 });
@@ -123,13 +126,13 @@ tenantRoutes.put('/keys/:id/provider', async (c) => {
   return c.json({ success: true });
 });
 
-// Tenant: Update key video_url return mode (true → CDN /v URL, false → upstream raw URL)
-tenantRoutes.put('/keys/:id/return-cdn', async (c) => {
+// Tenant: Update key video_url mode (cdn → our /v endpoint, upstream → raw upstream URL, s3 → our S3 presigned URL)
+tenantRoutes.put('/keys/:id/video-url-mode', async (c) => {
   const user = c.get('user');
   const keyId = parseInt(c.req.param('id'));
-  const { returnCdnVideoUrl } = await c.req.json();
-  if (typeof returnCdnVideoUrl !== 'boolean') {
-    return c.json({ error: 'returnCdnVideoUrl 必须为布尔值' }, 400);
+  const { videoUrlMode } = await c.req.json();
+  if (!['cdn', 'upstream', 's3'].includes(videoUrlMode)) {
+    return c.json({ error: 'videoUrlMode 必须为 cdn / upstream / s3' }, 400);
   }
 
   const keyRecord = await db.select().from(schema.keys)
@@ -137,7 +140,7 @@ tenantRoutes.put('/keys/:id/return-cdn', async (c) => {
     .limit(1);
   if (keyRecord.length === 0) return c.json({ error: 'Key not found' }, 404);
 
-  await db.update(schema.keys).set({ returnCdnVideoUrl }).where(eq(schema.keys.id, keyId));
+  await db.update(schema.keys).set({ videoUrlMode }).where(eq(schema.keys.id, keyId));
   clearKeyCache();
   return c.json({ success: true });
 });

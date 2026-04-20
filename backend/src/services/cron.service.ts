@@ -9,7 +9,7 @@ import { concurrencyCache, keyConcurrencyCache } from './concurrency.service.js'
 import { logger } from '../utils/logger.util.js';
 import { attemptModerationFallback, isFallbackEligible } from '../utils/autoFallback.util.js';
 import { reverseTokensFromCost } from '../utils/arkPricing.util.js';
-import { rewriteArkVideoUrl, computeVideoExpiresAt } from '../utils/videoUrl.util.js';
+import { rewriteArkVideoUrl, computeVideoExpiresAt, resolveVideoUrl, normalizeVideoUrlMode } from '../utils/videoUrl.util.js';
 import { maybeKickoffUpload, retryFailedUploads } from './videoOffload.service.js';
 import {
   retryMaterialS3Uploads,
@@ -116,16 +116,22 @@ const processPendingTask = async (log: any) => {
         // (non-succeeded) or no content.
         const rawUpstreamVideoUrl: string | undefined = result.arkResponse.content?.video_url;
         const storedArkResponse: any = { ...result.arkResponse, id: log.taskId || result.arkResponse.id };
-        // Mirror the per-key returnCdnVideoUrl opt-out so the stored snapshot
-        // matches what a client on the live path would have seen. Only 1 extra
-        // lookup per terminal transition (not per poll).
-        let keyReturnCdn = true;
+        // Mirror the per-key videoUrlMode so the stored snapshot matches what
+        // a client on the live path would have seen. Only 1 extra lookup per
+        // terminal transition (not per poll). At this point s3 upload hasn't
+        // happened yet, so s3-mode naturally falls back to the CDN URL.
+        let keyVideoMode = normalizeVideoUrlMode(undefined);
         if (log.keyId) {
-          const keyRow = await db.select({ returnCdnVideoUrl: schema.keys.returnCdnVideoUrl })
+          const keyRow = await db.select({ videoUrlMode: schema.keys.videoUrlMode })
             .from(schema.keys).where(eq(schema.keys.id, log.keyId)).limit(1);
-          if (keyRow.length > 0) keyReturnCdn = keyRow[0]!.returnCdnVideoUrl !== false;
+          if (keyRow.length > 0) keyVideoMode = normalizeVideoUrlMode(keyRow[0]!.videoUrlMode);
         }
-        rewriteArkVideoUrl(storedArkResponse, keyReturnCdn);
+        const snapshotReplacement = await resolveVideoUrl(keyVideoMode, {
+          taskId: log.taskId || result.arkResponse.id,
+          s3Key: log.s3Key,
+          s3UploadStatus: log.s3UploadStatus,
+        });
+        rewriteArkVideoUrl(storedArkResponse, snapshotReplacement);
         const videoFields = (normalizedStatus === 'succeeded' && rawUpstreamVideoUrl)
           ? {
               upstreamVideoUrl: rawUpstreamVideoUrl,

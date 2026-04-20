@@ -11,7 +11,7 @@ export default function AdminKeysPanel({ users }: Props) {
   const [adminKeyUserId, setAdminKeyUserId] = useState<number | ''>('');
   const [adminKeyName, setAdminKeyName] = useState('');
   const [adminKeyProvider, setAdminKeyProvider] = useState('');
-  const [adminKeyReturnCdn, setAdminKeyReturnCdn] = useState(true);
+  const [adminKeyVideoUrlMode, setAdminKeyVideoUrlMode] = useState<'cdn' | 'upstream' | 's3'>('cdn');
   const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
 
   const fetchKeys = useCallback(async (includeDisabled: boolean) => {
@@ -44,9 +44,9 @@ export default function AdminKeysPanel({ users }: Props) {
       userId: adminKeyUserId,
       name: adminKeyName,
       ...(adminKeyProvider ? { provider: adminKeyProvider } : {}),
-      returnCdnVideoUrl: adminKeyReturnCdn,
+      videoUrlMode: adminKeyVideoUrlMode,
     });
-    setAdminKeyUserId(''); setAdminKeyName(''); setAdminKeyProvider(''); setAdminKeyReturnCdn(true);
+    setAdminKeyUserId(''); setAdminKeyName(''); setAdminKeyProvider(''); setAdminKeyVideoUrlMode('cdn');
     fetchKeys(showDisabled);
   };
 
@@ -64,9 +64,9 @@ export default function AdminKeysPanel({ users }: Props) {
     }
   };
 
-  const updateKeyReturnCdn = async (keyId: number, next: boolean) => {
+  const updateKeyVideoUrlMode = async (keyId: number, next: 'cdn' | 'upstream' | 's3') => {
     try {
-      await api.put(`/admin/keys/${keyId}/return-cdn`, { returnCdnVideoUrl: next });
+      await api.put(`/admin/keys/${keyId}/video-url-mode`, { videoUrlMode: next });
       fetchKeys(showDisabled);
     } catch (err: any) {
       alert(err.response?.data?.error || '修改失败');
@@ -117,9 +117,10 @@ export default function AdminKeysPanel({ users }: Props) {
         </div>
         <div className="w-full sm:w-auto">
           <label className="block text-sm text-gray-600 mb-1">video_url 返回</label>
-          <select value={adminKeyReturnCdn ? 'cdn' : 'raw'} onChange={e => setAdminKeyReturnCdn(e.target.value === 'cdn')} className="border px-3 py-2 rounded-md w-full sm:w-auto">
-            <option value="cdn">CDN 链接（默认）</option>
-            <option value="raw">原始链接</option>
+          <select value={adminKeyVideoUrlMode} onChange={e => setAdminKeyVideoUrlMode(e.target.value as 'cdn' | 'upstream' | 's3')} className="border px-3 py-2 rounded-md w-full sm:w-auto">
+            <option value="cdn">CDN 中转链接（默认）</option>
+            <option value="upstream">上游原始链接</option>
+            <option value="s3">S3 签名链接</option>
           </select>
         </div>
         <button onClick={createAdminKey} className="bg-blue-600 text-white px-4 py-2 rounded-md h-fit w-full sm:w-auto">创建 Key</button>
@@ -157,13 +158,14 @@ export default function AdminKeysPanel({ users }: Props) {
               </td>
               <td className="p-2 text-xs">
                 <select
-                  value={k.returnCdnVideoUrl === false ? 'raw' : 'cdn'}
-                  onChange={(e) => updateKeyReturnCdn(k.id, e.target.value === 'cdn')}
+                  value={k.videoUrlMode || 'cdn'}
+                  onChange={(e) => updateKeyVideoUrlMode(k.id, e.target.value as 'cdn' | 'upstream' | 's3')}
                   className="border border-gray-200 px-2 py-1 rounded text-xs bg-gray-50 hover:bg-gray-100 focus:bg-white transition-colors cursor-pointer outline-none focus:border-blue-300"
-                  title="video_url 返回 CDN 链接还是上游原始链接"
+                  title="video_url 返回形式：CDN 中转 / 上游原始 / S3 签名"
                 >
-                  <option value="cdn">CDN 链接</option>
-                  <option value="raw">原始链接</option>
+                  <option value="cdn">CDN 中转</option>
+                  <option value="upstream">上游原始</option>
+                  <option value="s3">S3 签名</option>
                 </select>
               </td>
               <td className="p-2">
@@ -209,12 +211,13 @@ export default function AdminKeysPanel({ users }: Props) {
               </select>
               <span className="ml-2">video_url:</span>
               <select
-                value={k.returnCdnVideoUrl === false ? 'raw' : 'cdn'}
-                onChange={(e) => updateKeyReturnCdn(k.id, e.target.value === 'cdn')}
+                value={k.videoUrlMode || 'cdn'}
+                onChange={(e) => updateKeyVideoUrlMode(k.id, e.target.value as 'cdn' | 'upstream' | 's3')}
                 className="border border-gray-200 px-1 py-0.5 rounded text-xs bg-gray-50 outline-none focus:border-blue-300"
               >
                 <option value="cdn">CDN</option>
-                <option value="raw">原始</option>
+                <option value="upstream">原始</option>
+                <option value="s3">S3</option>
               </select>
             </div>
             <div className="flex items-center justify-between mt-1">

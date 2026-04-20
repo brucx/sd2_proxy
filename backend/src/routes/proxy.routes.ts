@@ -14,7 +14,7 @@ import { concurrencyCache, keyConcurrencyCache } from '../services/concurrency.s
 import { getProvider } from '../providers/index.js';
 import { generateTaskId } from '../utils/taskId.util.js';
 import { attemptModerationFallback, isFallbackEligible } from '../utils/autoFallback.util.js';
-import { rewriteArkVideoUrl, computeVideoExpiresAt } from '../utils/videoUrl.util.js';
+import { rewriteArkVideoUrl, computeVideoExpiresAt, resolveVideoUrl, normalizeVideoUrlMode } from '../utils/videoUrl.util.js';
 import { maybeKickoffUpload } from '../services/videoOffload.service.js';
 import { resolveForProvider } from '../services/material.service.js';
 import { logger } from '../utils/logger.util.js';
@@ -396,11 +396,18 @@ export const getResultHandler = async (c: any) => {
     // Capture the upstream-issued video URL before we rewrite it for the
     // client. Used below to populate upstream_video_url on the terminal write.
     const rawUpstreamVideoUrl: string | undefined = publicResponse.content?.video_url;
-    // Hide the upstream signed URL from the client — every succeeded poll
-    // returns a /v/{task_id}.mp4 self-URL regardless of whether this is the
-    // first terminal observation or a later re-poll. Respects the per-key
-    // opt-out (returnCdnVideoUrl=false → surface the upstream signed URL).
-    rewriteArkVideoUrl(publicResponse, keyRecord.returnCdnVideoUrl !== false);
+    // Surface video_url per the key's configured mode:
+    //   cdn      → rewrite to our /v/{task_id}.mp4 (default)
+    //   upstream → leave the upstream signed URL as-is
+    //   s3       → rewrite to a fresh S3 presigned URL (falls back to cdn
+    //              until the async S3 offload for this task completes)
+    const videoMode = normalizeVideoUrlMode(keyRecord.videoUrlMode);
+    const replacementUrl = await resolveVideoUrl(videoMode, {
+      taskId: publicTaskId,
+      s3Key: existingLog.s3Key,
+      s3UploadStatus: existingLog.s3UploadStatus,
+    });
+    rewriteArkVideoUrl(publicResponse, replacementUrl);
 
     // Ark-equivalent CNY-per-million-token rate. Exposed uniformly on every
     // response (running, terminal, error-free) so clients can previsualize
