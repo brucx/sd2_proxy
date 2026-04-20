@@ -33,6 +33,13 @@ export function startCleanupInterval() {
   }, 5 * 60 * 1000);
 }
 
+function isRateLimitExemptPath(method: string, path: string) {
+  return (
+    (method === 'POST' && path === '/api/v1/doubao/get_result') ||
+    (method === 'GET' && /^\/api\/v3\/contents\/generations\/tasks\/[^/]+$/.test(path))
+  );
+}
+
 export const proxyAuthMiddleware = async (c: Context<{ Variables: AppVariables }>, next: Next) => {
   const clientIp = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || 'unknown';
   const authHeader = c.req.header('Authorization');
@@ -85,18 +92,21 @@ export const proxyAuthMiddleware = async (c: Context<{ Variables: AppVariables }
     keyCache.set(apiKey, cached);
   }
 
-  // Rate limiting
-  let limit = rateLimits[apiKey];
-  if (!limit || limit.resetTime < now) {
-    limit = { count: 0, resetTime: now + 60000 };
-    rateLimits[apiKey] = limit;
-  }
+  // Rate limiting. Task-query endpoints are exempt so clients can poll freely;
+  // upstream pressure is handled separately by the per-task response cache.
+  if (!isRateLimitExemptPath(c.req.method, c.req.path)) {
+    let limit = rateLimits[apiKey];
+    if (!limit || limit.resetTime < now) {
+      limit = { count: 0, resetTime: now + 60000 };
+      rateLimits[apiKey] = limit;
+    }
 
-  if (limit.count >= RATE_LIMIT_MAX) {
-    return c.json({ error: 'Rate limit exceeded' }, 429);
-  }
+    if (limit.count >= RATE_LIMIT_MAX) {
+      return c.json({ error: 'Rate limit exceeded' }, 429);
+    }
 
-  limit.count++;
+    limit.count++;
+  }
 
   // IP Whitelist check
   if (cached && cached.whitelist.length > 0) {
