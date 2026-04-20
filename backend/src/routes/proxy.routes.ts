@@ -282,12 +282,36 @@ export const createHandler = async (c: any) => {
   }
 };
 
-// Per-task-id poll throttle (3s minimum between queries for the same task).
-const taskPollTracker = new Map<string, number>();
+// Per-task-id poll cache. Upstream enforces a 3s minimum query interval for
+// the same task, so we reuse the last response we already returned to the
+// client when a re-poll lands inside that window.
+const TASK_POLL_CACHE_WINDOW_MS = 3_000;
+const TASK_POLL_CACHE_RETENTION_MS = 10 * 60_000;
+const taskPollResponseCache = new Map<string, {
+  fetchedAt: number;
+  statusCode: number;
+  responseBody: string;
+}>();
+
+function getRecentTaskPollResponse(taskId: string) {
+  const cached = taskPollResponseCache.get(taskId);
+  if (!cached) return null;
+  if ((Date.now() - cached.fetchedAt) >= TASK_POLL_CACHE_WINDOW_MS) return null;
+  return cached;
+}
+
+function setRecentTaskPollResponse(taskId: string, statusCode: number, responseBody: string) {
+  taskPollResponseCache.set(taskId, {
+    fetchedAt: Date.now(),
+    statusCode,
+    responseBody,
+  });
+}
+
 setInterval(() => {
-  const cutoff = Date.now() - 60_000;
-  for (const [k, v] of taskPollTracker) {
-    if (v < cutoff) taskPollTracker.delete(k);
+  const cutoff = Date.now() - TASK_POLL_CACHE_RETENTION_MS;
+  for (const [k, v] of taskPollResponseCache) {
+    if (v.fetchedAt < cutoff) taskPollResponseCache.delete(k);
   }
 }, 5 * 60 * 1000);
 
@@ -317,14 +341,6 @@ export const getResultHandler = async (c: any) => {
   const requestBodyStr = JSON.stringify(body);
 
   const queryTaskId: string | undefined = body.id;
-  if (queryTaskId) {
-    const lastPoll = taskPollTracker.get(queryTaskId);
-    const now = Date.now();
-    if (lastPoll && (now - lastPoll) < 3000) {
-      return c.json({ error: '同一任务ID查询间隔需不少于 3 秒，请稍后重试' }, 429);
-    }
-    taskPollTracker.set(queryTaskId, now);
-  }
 
   try {
     const existingLog = queryTaskId ? await findLogByTaskId(queryTaskId) : undefined;
@@ -338,6 +354,26 @@ export const getResultHandler = async (c: any) => {
     }
 
     const publicTaskId = existingLog.taskId || queryTaskId!;
+    const cachedResponse = getRecentTaskPollResponse(publicTaskId);
+    if (cachedResponse) {
+      const durationMs = Date.now() - startTime;
+      db.insert(schema.requestLogs).values({
+        userId: keyRecord.userId,
+        keyId: keyRecord.id,
+        endpoint: '/get_result',
+        method: c.req.method,
+        requestBody: requestBodyStr,
+        responseBody: cachedResponse.responseBody,
+        responseStatus: cachedResponse.statusCode,
+        durationMs,
+        ipAddress: clientIp,
+      }).catch(err => console.error('Request log insert error:', err));
+
+      c.header('content-type', 'application/json; charset=utf-8');
+      c.status(cachedResponse.statusCode as any);
+      return c.body(cachedResponse.responseBody);
+    }
+
     const upstreamId = existingLog.upstreamTaskId || queryTaskId!;
     const logProvider = existingLog.provider || 'meitu';
 
@@ -411,13 +447,15 @@ export const getResultHandler = async (c: any) => {
                 rate_cny_per_million: fallbackRate,
               };
             }
+            const fallbackResponseBody = JSON.stringify(fallbackResponse);
+            setRecentTaskPollResponse(publicTaskId, 200, fallbackResponseBody);
             db.insert(schema.requestLogs).values({
               userId: keyRecord.userId,
               keyId: keyRecord.id,
               endpoint: '/get_result',
               method: c.req.method,
               requestBody: requestBodyStr,
-              responseBody: JSON.stringify(fallbackResponse),
+              responseBody: fallbackResponseBody,
               responseStatus: 200,
               durationMs: Date.now() - startTime,
               ipAddress: clientIp,
@@ -552,6 +590,7 @@ export const getResultHandler = async (c: any) => {
     // Re-serialize after all response mutations (rate + evolink synthetic
     // tokens) so the request log captures what the client actually receives.
     const responseBody = JSON.stringify(publicResponse);
+    setRecentTaskPollResponse(publicTaskId, result.statusCode, responseBody);
     db.insert(schema.requestLogs).values({
       userId: keyRecord.userId,
       keyId: keyRecord.id,
