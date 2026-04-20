@@ -214,7 +214,10 @@ export const createHandler = async (c: any) => {
             videoDuration: body.duration || null,
             videoQuality: body.resolution || body.quality || '720p',
           }
-        : { videoQuality: body.resolution || body.quality || '720p' };
+        : {
+            videoDuration: body.duration || null,
+            videoQuality: body.resolution || body.quality || '720p',
+          };
 
       await db.insert(schema.usageLogs).values({
         userId: keyRecord.userId,
