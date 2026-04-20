@@ -99,6 +99,12 @@ export const config = {
     'true:1080p': 0.31,
   } as Record<string, number>,
 
+  // -- Playground display markup --
+  // Multiplier applied to upstream cost before it's shown in the Playground
+  // usage history. 1.1 means "sell cost = upstream cost × 1.1". DB stores the
+  // raw upstream cost; markup is applied at read time only.
+  PLAYGROUND_MARKUP_RATIO: Math.max(parseFloat(process.env.PLAYGROUND_MARKUP_RATIO || '1.1') || 1.1, 0),
+
   // -- Ark (Volcengine) Provider --
   ARK_API_KEY: process.env.ARK_API_KEY || '',
   ARK_URL: process.env.ARK_URL || 'https://ark.cn-beijing.volces.com',

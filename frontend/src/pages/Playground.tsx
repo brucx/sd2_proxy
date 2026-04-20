@@ -87,6 +87,118 @@ function Playground() {
   // Clipboard feedback
   const [assetCopiedId, setAssetCopiedId] = useState<string | null>(null);
 
+  // ── Usage History (simple reconciliation view) ──
+  interface HistoryItem {
+    id: number;
+    taskId: string | null;
+    endpoint: string;
+    status: string | null;
+    videoDuration: number | null;
+    videoQuality: string | null;
+    hasVideoInput: boolean;
+    taskDurationMs: number | null;
+    costDisplay: string;
+    createdAt: string;
+    updatedAt: string;
+  }
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPageSize, setHistoryPageSize] = useState(20);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyStartDate, setHistoryStartDate] = useState('');
+  const [historyEndDate, setHistoryEndDate] = useState('');
+  const [exportLoading, setExportLoading] = useState(false);
+
+  const fetchHistory = useCallback(async (opts?: { page?: number }) => {
+    if (!apiKey) return;
+    const page = opts?.page ?? historyPage;
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const res = await axios.get('/api/v1/playground/history', {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        params: {
+          page,
+          pageSize: historyPageSize,
+          ...(historyStartDate && { startDate: historyStartDate }),
+          ...(historyEndDate && { endDate: historyEndDate }),
+        },
+      });
+      setHistory(res.data.items || []);
+      setHistoryTotal(res.data.total ?? 0);
+      setHistoryPage(res.data.page ?? page);
+    } catch (err: any) {
+      setHistoryError(err.response?.data?.error || err.message || 'Failed to load history');
+      setHistory([]);
+      setHistoryTotal(0);
+    }
+    setHistoryLoading(false);
+  }, [apiKey, historyPage, historyPageSize, historyStartDate, historyEndDate]);
+
+  useEffect(() => {
+    if (apiKey) fetchHistory({ page: historyPage });
+    else {
+      setHistory([]);
+      setHistoryTotal(0);
+      setHistoryError(null);
+      setHistoryPage(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiKey, historyPage, historyPageSize, historyStartDate, historyEndDate]);
+
+  const exportHistoryCsv = useCallback(async () => {
+    if (!apiKey) return;
+    setExportLoading(true);
+    try {
+      const res = await axios.get('/api/v1/playground/history', {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        params: {
+          page: 1,
+          pageSize: 1000,
+          ...(historyStartDate && { startDate: historyStartDate }),
+          ...(historyEndDate && { endDate: historyEndDate }),
+        },
+      });
+      const rows: HistoryItem[] = res.data.items || [];
+      const header = ['created_at', 'task_id', 'endpoint', 'status', 'video_quality', 'video_duration_s', 'has_video_input', 'task_duration_ms', 'cost_cny'];
+      const esc = (v: any) => {
+        if (v === null || v === undefined) return '';
+        const s = String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const lines = [header.join(',')];
+      for (const r of rows) {
+        lines.push([
+          esc(new Date(r.createdAt).toISOString()),
+          esc(r.taskId || ''),
+          esc(r.endpoint),
+          esc(r.status || ''),
+          esc(r.videoQuality || ''),
+          esc(r.videoDuration ?? ''),
+          esc(r.hasVideoInput),
+          esc(r.taskDurationMs ?? ''),
+          esc(r.costDisplay),
+        ].join(','));
+      }
+      const csv = '\uFEFF' + lines.join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      a.href = url;
+      a.download = `playground-usage-${stamp}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setHistoryError(err.response?.data?.error || err.message || 'Export failed');
+    }
+    setExportLoading(false);
+  }, [apiKey, historyStartDate, historyEndDate]);
+
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
 
   // ── Asset API helpers ──
@@ -585,85 +697,27 @@ function Playground() {
         </div>
       )}
 
-      {/* ── Config Bar: API Key + Model + Parameters ── */}
-      <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700">🔑 API Key</label>
-            <input
-              type="text"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-md font-mono text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all"
-              placeholder="sk-xxxxxxxx"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700">🤖 Model</label>
-            <select
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all bg-white"
-            >
-              <option value="doubao-seedance-2-0-260128">doubao-seedance-2-0-260128 (Standard)</option>
-              <option value="doubao-seedance-2-0-fast-260128">doubao-seedance-2-0-fast-260128 (Fast)</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700">📐 Ratio</label>
-            <select
-              value={ratio}
-              onChange={(e) => setRatio(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all bg-white"
-            >
-              <option value="adaptive">adaptive</option>
-              <option value="16:9">16:9</option>
-              <option value="4:3">4:3</option>
-              <option value="1:1">1:1</option>
-              <option value="3:4">3:4</option>
-              <option value="9:16">9:16</option>
-              <option value="21:9">21:9</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700">🖥️ Resolution</label>
-            <select
-              value={resolution}
-              onChange={(e) => setResolution(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all bg-white"
-            >
-              <option value="720p">720p</option>
-              <option value="480p">480p</option>
-              <option value="1080p">1080p</option>
-            </select>
-          </div>
-        </div>
-        {/* Second row: Duration + toggles */}
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mt-4 pt-4 border-t border-gray-100">
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-gray-700 whitespace-nowrap">⏱️ Duration</label>
-            <input
-              type="number"
-              value={duration}
-              onChange={(e) => { const v = parseInt(e.target.value); setDuration(isNaN(v) ? 5 : (v === -1 ? -1 : Math.min(15, Math.max(4, v)))); }}
-              min={-1}
-              max={15}
-              className="w-20 px-2 py-1.5 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all"
-            />
-            <span className="text-xs text-gray-400">{duration === -1 ? '智能' : '秒'}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-gray-700">🔊 Audio</label>
-            <button
-              type="button"
-              onClick={() => setGenerateAudio(!generateAudio)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${generateAudio ? 'bg-blue-600' : 'bg-gray-300'}`}
-            >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${generateAudio ? 'translate-x-6' : 'translate-x-1'}`} />
-            </button>
-          </div>
-
-        </div>
+      {/* ── API Key (required, prominent) ── */}
+      <div className={`bg-white p-4 sm:p-6 rounded-xl shadow-sm border-2 ${apiKey ? 'border-transparent' : 'border-blue-200'}`}>
+        <label htmlFor="api-key-input" className="flex items-center gap-1.5 text-base font-semibold mb-2 text-gray-800">
+          <span>🔑</span>
+          <span>API Key</span>
+          <span className="text-red-500" aria-hidden="true">*</span>
+          <span className="sr-only">（必填）</span>
+        </label>
+        <input
+          id="api-key-input"
+          type="password"
+          required
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg font-mono text-base focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all"
+          placeholder="sk-xxxxxxxx"
+          autoComplete="off"
+        />
+        {!apiKey && (
+          <p className="mt-2 text-xs text-blue-600">请填入 API Key 以使用 Playground、管理素材并发起请求。</p>
+        )}
       </div>
 
       {/* ── Asset Management Panel (collapsible) ── */}
@@ -1082,8 +1136,77 @@ function Playground() {
 
       {/* ── Prompt & Reference Media (full width) ── */}
       <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm space-y-5">
+        {/* Parameters */}
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1 text-gray-700">🤖 Model</label>
+              <select
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all bg-white"
+              >
+                <option value="doubao-seedance-2-0-260128">doubao-seedance-2-0-260128 (Standard)</option>
+                <option value="doubao-seedance-2-0-fast-260128">doubao-seedance-2-0-fast-260128 (Fast)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1 text-gray-700">📐 Ratio</label>
+              <select
+                value={ratio}
+                onChange={(e) => setRatio(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all bg-white"
+              >
+                <option value="adaptive">adaptive</option>
+                <option value="16:9">16:9</option>
+                <option value="4:3">4:3</option>
+                <option value="1:1">1:1</option>
+                <option value="3:4">3:4</option>
+                <option value="9:16">9:16</option>
+                <option value="21:9">21:9</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1 text-gray-700">🖥️ Resolution</label>
+              <select
+                value={resolution}
+                onChange={(e) => setResolution(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all bg-white"
+              >
+                <option value="720p">720p</option>
+                <option value="480p">480p</option>
+                <option value="1080p">1080p</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700 whitespace-nowrap">⏱️ Duration</label>
+              <input
+                type="number"
+                value={duration}
+                onChange={(e) => { const v = parseInt(e.target.value); setDuration(isNaN(v) ? 5 : (v === -1 ? -1 : Math.min(15, Math.max(4, v)))); }}
+                min={-1}
+                max={15}
+                className="w-20 px-2 py-1.5 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all"
+              />
+              <span className="text-xs text-gray-400">{duration === -1 ? '智能' : '秒'}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700">🔊 Audio</label>
+              <button
+                type="button"
+                onClick={() => setGenerateAudio(!generateAudio)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${generateAudio ? 'bg-blue-600' : 'bg-gray-300'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${generateAudio ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* Text Prompt */}
-        <div>
+        <div className="border-t border-gray-100 pt-5">
           <label className="block text-sm font-medium mb-1 text-gray-700">📝 Text Prompt（可选）</label>
           <textarea
             value={prompt}
@@ -1352,6 +1475,151 @@ function Playground() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ── Usage History (reconciliation) ── */}
+      <div className="bg-white p-4 sm:p-5 rounded-xl shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">📊</span>
+            <h3 className="text-sm sm:text-base font-semibold text-gray-800">使用历史 / Usage History</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => fetchHistory({ page: historyPage })}
+              disabled={!apiKey || historyLoading}
+              className="text-xs px-3 py-1.5 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            >
+              {historyLoading ? '加载中…' : '🔄 刷新'}
+            </button>
+            <button
+              onClick={exportHistoryCsv}
+              disabled={!apiKey || exportLoading}
+              className="text-xs px-3 py-1.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 disabled:opacity-50 transition-colors"
+            >
+              {exportLoading ? '导出中…' : '⬇ 导出 CSV'}
+            </button>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="flex flex-wrap items-end gap-3 mb-4">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">起始日期</label>
+            <input
+              type="date"
+              value={historyStartDate}
+              onChange={(e) => { setHistoryPage(1); setHistoryStartDate(e.target.value); }}
+              className="px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all"
+              disabled={!apiKey}
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">结束日期</label>
+            <input
+              type="date"
+              value={historyEndDate}
+              onChange={(e) => { setHistoryPage(1); setHistoryEndDate(e.target.value); }}
+              className="px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all"
+              disabled={!apiKey}
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">每页</label>
+            <select
+              value={historyPageSize}
+              onChange={(e) => { setHistoryPage(1); setHistoryPageSize(parseInt(e.target.value)); }}
+              className="px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all bg-white"
+              disabled={!apiKey}
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+          {(historyStartDate || historyEndDate) && (
+            <button
+              onClick={() => { setHistoryPage(1); setHistoryStartDate(''); setHistoryEndDate(''); }}
+              className="text-xs text-gray-500 hover:text-gray-700 underline underline-offset-2 pb-1.5"
+            >
+              清空筛选
+            </button>
+          )}
+        </div>
+
+        {!apiKey ? (
+          <p className="text-sm text-gray-400 text-center py-6">请在上方填入 API Key 查看使用历史</p>
+        ) : historyError ? (
+          <p className="text-sm text-red-500 py-4">⚠️ {historyError}</p>
+        ) : history.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-6">{historyLoading ? '加载中…' : '暂无记录'}</p>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs sm:text-sm">
+                <thead>
+                  <tr className="text-left text-gray-500 border-b border-gray-100">
+                    <th className="py-2 pr-3 font-medium">时间</th>
+                    <th className="py-2 pr-3 font-medium">Task ID</th>
+                    <th className="py-2 pr-3 font-medium">Status</th>
+                    <th className="py-2 pr-3 font-medium">规格</th>
+                    <th className="py-2 pr-3 font-medium text-right">金额 (CNY)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map(row => {
+                    const time = new Date(row.createdAt).toLocaleString('zh-CN', { hour12: false });
+                    const spec = [
+                      row.videoQuality || null,
+                      row.videoDuration ? `${row.videoDuration}s` : null,
+                      row.hasVideoInput ? 'i2v/ref' : 't2v',
+                    ].filter(Boolean).join(' · ');
+                    const statusColor =
+                      row.status === 'succeeded' ? 'text-emerald-600' :
+                      row.status === 'failed' || row.status === 'rejected' ? 'text-red-500' :
+                      row.status === 'cancelled' || row.status === 'expired' ? 'text-gray-400' :
+                      'text-blue-500';
+                    return (
+                      <tr key={row.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                        <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{time}</td>
+                        <td className="py-2 pr-3 font-mono text-gray-700 truncate max-w-[180px]" title={row.taskId || ''}>
+                          {row.taskId || '-'}
+                        </td>
+                        <td className={`py-2 pr-3 font-medium ${statusColor}`}>{row.status || '-'}</td>
+                        <td className="py-2 pr-3 text-gray-500">{spec || '-'}</td>
+                        <td className="py-2 pr-3 text-right font-mono text-gray-800">¥ {row.costDisplay}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            <div className="flex flex-wrap items-center justify-between gap-2 mt-3">
+              <p className="text-xs text-gray-400">
+                共 {historyTotal} 条 · 第 {historyPage} / {Math.max(1, Math.ceil(historyTotal / historyPageSize))} 页
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
+                  disabled={historyLoading || historyPage <= 1}
+                  className="text-xs px-2.5 py-1 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                >
+                  上一页
+                </button>
+                <button
+                  onClick={() => setHistoryPage(p => p + 1)}
+                  disabled={historyLoading || historyPage >= Math.ceil(historyTotal / historyPageSize)}
+                  className="text-xs px-2.5 py-1 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                >
+                  下一页
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

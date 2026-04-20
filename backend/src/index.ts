@@ -21,6 +21,7 @@ import { adminRoutes } from './routes/admin.routes.js';
 import { tenantRoutes } from './routes/tenant.routes.js';
 import { proxyRoutes, createHandler, getResultHandler, cancelHandler } from './routes/proxy.routes.js';
 import { assetRoutes } from './routes/asset.routes.js';
+import { playgroundRoutes } from './routes/playground.routes.js';
 import { videoRoutes } from './routes/video.routes.js';
 import { proxyAuthMiddleware } from './middlewares/proxy.middleware.js';
 
@@ -57,6 +58,7 @@ app.route('/api/panel/admin', adminRoutes);
 app.route('/api/panel', tenantRoutes); 
 app.route('/api/v1/doubao', proxyRoutes);
 app.route('/api/v1/open', assetRoutes);
+app.route('/api/v1/playground', playgroundRoutes);
 // Public video redirect endpoint. Intentionally mounted outside /api so clients
 // (video players, <video src>) can use it directly without auth headers.
 app.route('/v', videoRoutes);
