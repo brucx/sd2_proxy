@@ -573,6 +573,7 @@ adminRoutes.get('/keys', async (c) => {
       expiresAt: schema.keys.expiresAt,
       provider: schema.keys.provider,
       userProvider: schema.users.provider,
+      returnCdnVideoUrl: schema.keys.returnCdnVideoUrl,
       createdAt: schema.keys.createdAt,
     })
     .from(schema.keys)
@@ -583,7 +584,7 @@ adminRoutes.get('/keys', async (c) => {
 
 // Admin: Create key for user
 adminRoutes.post('/keys', async (c) => {
-  const { userId, name, expiresAt, provider } = await c.req.json();
+  const { userId, name, expiresAt, provider, returnCdnVideoUrl } = await c.req.json();
   if (!userId || !name) return c.json({ error: 'userId and name are required' }, 400);
   if (provider != null && provider !== '' && !['meitu', 'evolink', 'ark', 'auto'].includes(provider)) {
     return c.json({ error: 'Provider 必须为 meitu / evolink / ark / auto' }, 400);
@@ -600,8 +601,25 @@ adminRoutes.post('/keys', async (c) => {
     name,
     ...(expiresAt ? { expiresAt: new Date(expiresAt) } : {}),
     ...(provider ? { provider } : {}),
+    ...(typeof returnCdnVideoUrl === 'boolean' ? { returnCdnVideoUrl } : {}),
   });
   return c.json({ success: true, apiKey });
+});
+
+// Admin: Update key video_url return mode (true → our CDN /v URL, false → upstream raw URL)
+adminRoutes.put('/keys/:id/return-cdn', async (c) => {
+  const keyId = parseInt(c.req.param('id'));
+  const { returnCdnVideoUrl } = await c.req.json();
+  if (typeof returnCdnVideoUrl !== 'boolean') {
+    return c.json({ error: 'returnCdnVideoUrl 必须为布尔值' }, 400);
+  }
+
+  const keyRecord = await db.select().from(schema.keys).where(eq(schema.keys.id, keyId)).limit(1);
+  if (keyRecord.length === 0) return c.json({ error: 'Key not found' }, 404);
+
+  await db.update(schema.keys).set({ returnCdnVideoUrl }).where(eq(schema.keys.id, keyId));
+  clearKeyCache();
+  return c.json({ success: true });
 });
 
 // Admin: Update key provider (null/empty → inherit user-level provider)

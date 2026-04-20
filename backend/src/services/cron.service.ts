@@ -116,7 +116,16 @@ const processPendingTask = async (log: any) => {
         // (non-succeeded) or no content.
         const rawUpstreamVideoUrl: string | undefined = result.arkResponse.content?.video_url;
         const storedArkResponse: any = { ...result.arkResponse, id: log.taskId || result.arkResponse.id };
-        rewriteArkVideoUrl(storedArkResponse);
+        // Mirror the per-key returnCdnVideoUrl opt-out so the stored snapshot
+        // matches what a client on the live path would have seen. Only 1 extra
+        // lookup per terminal transition (not per poll).
+        let keyReturnCdn = true;
+        if (log.keyId) {
+          const keyRow = await db.select({ returnCdnVideoUrl: schema.keys.returnCdnVideoUrl })
+            .from(schema.keys).where(eq(schema.keys.id, log.keyId)).limit(1);
+          if (keyRow.length > 0) keyReturnCdn = keyRow[0]!.returnCdnVideoUrl !== false;
+        }
+        rewriteArkVideoUrl(storedArkResponse, keyReturnCdn);
         const videoFields = (normalizedStatus === 'succeeded' && rawUpstreamVideoUrl)
           ? {
               upstreamVideoUrl: rawUpstreamVideoUrl,

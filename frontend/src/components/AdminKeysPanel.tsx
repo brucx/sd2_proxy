@@ -11,6 +11,7 @@ export default function AdminKeysPanel({ users }: Props) {
   const [adminKeyUserId, setAdminKeyUserId] = useState<number | ''>('');
   const [adminKeyName, setAdminKeyName] = useState('');
   const [adminKeyProvider, setAdminKeyProvider] = useState('');
+  const [adminKeyReturnCdn, setAdminKeyReturnCdn] = useState(true);
   const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
 
   const fetchKeys = useCallback(async (includeDisabled: boolean) => {
@@ -43,8 +44,9 @@ export default function AdminKeysPanel({ users }: Props) {
       userId: adminKeyUserId,
       name: adminKeyName,
       ...(adminKeyProvider ? { provider: adminKeyProvider } : {}),
+      returnCdnVideoUrl: adminKeyReturnCdn,
     });
-    setAdminKeyUserId(''); setAdminKeyName(''); setAdminKeyProvider('');
+    setAdminKeyUserId(''); setAdminKeyName(''); setAdminKeyProvider(''); setAdminKeyReturnCdn(true);
     fetchKeys(showDisabled);
   };
 
@@ -56,6 +58,15 @@ export default function AdminKeysPanel({ users }: Props) {
   const updateKeyProvider = async (keyId: number, value: string) => {
     try {
       await api.put(`/admin/keys/${keyId}/provider`, { provider: value === '' ? null : value });
+      fetchKeys(showDisabled);
+    } catch (err: any) {
+      alert(err.response?.data?.error || '修改失败');
+    }
+  };
+
+  const updateKeyReturnCdn = async (keyId: number, next: boolean) => {
+    try {
+      await api.put(`/admin/keys/${keyId}/return-cdn`, { returnCdnVideoUrl: next });
       fetchKeys(showDisabled);
     } catch (err: any) {
       alert(err.response?.data?.error || '修改失败');
@@ -104,12 +115,19 @@ export default function AdminKeysPanel({ users }: Props) {
             <option value="auto">Auto (Meitu→Evolink)</option>
           </select>
         </div>
+        <div className="w-full sm:w-auto">
+          <label className="block text-sm text-gray-600 mb-1">video_url 返回</label>
+          <select value={adminKeyReturnCdn ? 'cdn' : 'raw'} onChange={e => setAdminKeyReturnCdn(e.target.value === 'cdn')} className="border px-3 py-2 rounded-md w-full sm:w-auto">
+            <option value="cdn">CDN 链接（默认）</option>
+            <option value="raw">原始链接</option>
+          </select>
+        </div>
         <button onClick={createAdminKey} className="bg-blue-600 text-white px-4 py-2 rounded-md h-fit w-full sm:w-auto">创建 Key</button>
       </div>
       {/* Desktop Table */}
       <table className="w-full text-left border-collapse text-sm hidden md:table">
         <thead>
-          <tr className="border-b bg-gray-50"><th className="p-2">用户</th><th className="p-2">名称</th><th className="p-2">API Key</th><th className="p-2">Provider</th><th className="p-2">状态</th><th className="p-2">创建时间</th><th className="p-2">操作</th></tr>
+          <tr className="border-b bg-gray-50"><th className="p-2">用户</th><th className="p-2">名称</th><th className="p-2">API Key</th><th className="p-2">Provider</th><th className="p-2">video_url</th><th className="p-2">状态</th><th className="p-2">创建时间</th><th className="p-2">操作</th></tr>
         </thead>
         <tbody>
           {adminKeys.map(k => (
@@ -125,8 +143,8 @@ export default function AdminKeysPanel({ users }: Props) {
                 </span>
               </td>
               <td className="p-2 text-xs">
-                <select 
-                  value={k.provider || ''} 
+                <select
+                  value={k.provider || ''}
                   onChange={(e) => updateKeyProvider(k.id, e.target.value)}
                   className="border border-gray-200 px-2 py-1 rounded text-xs bg-gray-50 hover:bg-gray-100 focus:bg-white transition-colors cursor-pointer outline-none focus:border-blue-300"
                 >
@@ -135,6 +153,17 @@ export default function AdminKeysPanel({ users }: Props) {
                   <option value="evolink">Evolink</option>
                   <option value="ark">Ark</option>
                   <option value="auto">Auto</option>
+                </select>
+              </td>
+              <td className="p-2 text-xs">
+                <select
+                  value={k.returnCdnVideoUrl === false ? 'raw' : 'cdn'}
+                  onChange={(e) => updateKeyReturnCdn(k.id, e.target.value === 'cdn')}
+                  className="border border-gray-200 px-2 py-1 rounded text-xs bg-gray-50 hover:bg-gray-100 focus:bg-white transition-colors cursor-pointer outline-none focus:border-blue-300"
+                  title="video_url 返回 CDN 链接还是上游原始链接"
+                >
+                  <option value="cdn">CDN 链接</option>
+                  <option value="raw">原始链接</option>
                 </select>
               </td>
               <td className="p-2">
@@ -165,10 +194,10 @@ export default function AdminKeysPanel({ users }: Props) {
               </span>
             </div>
             <div className="text-sm text-gray-600">User: {k.username}</div>
-            <div className="text-xs text-gray-600 flex items-center gap-1">
-              Provider: 
-              <select 
-                value={k.provider || ''} 
+            <div className="text-xs text-gray-600 flex items-center gap-1 flex-wrap">
+              <span>Provider:</span>
+              <select
+                value={k.provider || ''}
                 onChange={(e) => updateKeyProvider(k.id, e.target.value)}
                 className="border border-gray-200 px-1 py-0.5 rounded text-xs bg-gray-50 outline-none focus:border-blue-300"
               >
@@ -177,6 +206,15 @@ export default function AdminKeysPanel({ users }: Props) {
                 <option value="evolink">Evolink</option>
                 <option value="ark">Ark</option>
                 <option value="auto">Auto</option>
+              </select>
+              <span className="ml-2">video_url:</span>
+              <select
+                value={k.returnCdnVideoUrl === false ? 'raw' : 'cdn'}
+                onChange={(e) => updateKeyReturnCdn(k.id, e.target.value === 'cdn')}
+                className="border border-gray-200 px-1 py-0.5 rounded text-xs bg-gray-50 outline-none focus:border-blue-300"
+              >
+                <option value="cdn">CDN</option>
+                <option value="raw">原始</option>
               </select>
             </div>
             <div className="flex items-center justify-between mt-1">

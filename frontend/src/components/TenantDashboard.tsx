@@ -19,6 +19,7 @@ export default function TenantDashboard({
 }: Props) {
   const [newKeyName, setNewKeyName] = useState('');
   const [newKeyProvider, setNewKeyProvider] = useState('');  // '' = inherit user-level
+  const [newKeyReturnCdn, setNewKeyReturnCdn] = useState(true);
   const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
   const [newWhitelistIp, setNewWhitelistIp] = useState('');
   const [whitelistMsg, setWhitelistMsg] = useState('');
@@ -42,15 +43,29 @@ export default function TenantDashboard({
 
   const createKey = async () => {
     if (!newKeyName) return;
-    await api.post('/keys', { name: newKeyName, ...(newKeyProvider ? { provider: newKeyProvider } : {}) });
+    await api.post('/keys', {
+      name: newKeyName,
+      ...(newKeyProvider ? { provider: newKeyProvider } : {}),
+      returnCdnVideoUrl: newKeyReturnCdn,
+    });
     setNewKeyName('');
     setNewKeyProvider('');
+    setNewKeyReturnCdn(true);
     onRefresh();
   };
 
   const updateKeyProvider = async (keyId: number, value: string) => {
     try {
       await api.put(`/keys/${keyId}/provider`, { provider: value === '' ? null : value });
+      onRefresh();
+    } catch (err: any) {
+      alert(err.response?.data?.error || '修改失败');
+    }
+  };
+
+  const updateKeyReturnCdn = async (keyId: number, next: boolean) => {
+    try {
+      await api.put(`/keys/${keyId}/return-cdn`, { returnCdnVideoUrl: next });
       onRefresh();
     } catch (err: any) {
       alert(err.response?.data?.error || '修改失败');
@@ -220,11 +235,18 @@ export default function TenantDashboard({
               <option value="auto">Auto (Meitu→Evolink)</option>
             </select>
           </div>
+          <div className="w-full sm:w-auto">
+            <label className="block text-sm text-gray-600 mb-1">video_url 返回</label>
+            <select value={newKeyReturnCdn ? 'cdn' : 'raw'} onChange={e => setNewKeyReturnCdn(e.target.value === 'cdn')} className="border px-3 py-2 rounded-md w-full sm:w-auto">
+              <option value="cdn">CDN 链接（默认）</option>
+              <option value="raw">原始链接</option>
+            </select>
+          </div>
           <button onClick={createKey} className="bg-blue-600 text-white px-4 py-2 rounded-md w-full sm:w-auto">Create Key</button>
         </div>
         <table className="w-full text-left border-collapse hidden md:table">
           <thead>
-            <tr className="border-b bg-gray-50"><th className="p-2">Name</th><th className="p-2">API Key</th><th className="p-2">Provider</th><th className="p-2">配额</th><th className="p-2">并发</th><th className="p-2">Created</th><th className="p-2">操作</th></tr>
+            <tr className="border-b bg-gray-50"><th className="p-2">Name</th><th className="p-2">API Key</th><th className="p-2">Provider</th><th className="p-2">video_url</th><th className="p-2">配额</th><th className="p-2">并发</th><th className="p-2">Created</th><th className="p-2">操作</th></tr>
           </thead>
           <tbody>
             {keys.map(k => (
@@ -239,8 +261,8 @@ export default function TenantDashboard({
                   </span>
                 </td>
                 <td className="p-2 text-sm">
-                  <select 
-                    value={k.provider || ''} 
+                  <select
+                    value={k.provider || ''}
                     onChange={(e) => updateKeyProvider(k.id, e.target.value)}
                     className="border border-gray-200 px-2 py-1 rounded text-xs bg-gray-50 hover:bg-gray-100 focus:bg-white transition-colors cursor-pointer outline-none focus:border-blue-300"
                   >
@@ -249,6 +271,17 @@ export default function TenantDashboard({
                     <option value="evolink">Evolink</option>
                     <option value="ark">Ark</option>
                     <option value="auto">Auto (Meitu→Evolink)</option>
+                  </select>
+                </td>
+                <td className="p-2 text-sm">
+                  <select
+                    value={k.returnCdnVideoUrl === false ? 'raw' : 'cdn'}
+                    onChange={(e) => updateKeyReturnCdn(k.id, e.target.value === 'cdn')}
+                    className="border border-gray-200 px-2 py-1 rounded text-xs bg-gray-50 hover:bg-gray-100 focus:bg-white transition-colors cursor-pointer outline-none focus:border-blue-300"
+                    title="video_url 返回 CDN 链接还是上游原始链接"
+                  >
+                    <option value="cdn">CDN 链接</option>
+                    <option value="raw">原始链接</option>
                   </select>
                 </td>
                 <td className="p-2 text-sm">
@@ -290,9 +323,9 @@ export default function TenantDashboard({
                 </button>
               </div>
               <div className="flex gap-4 text-xs text-gray-600 mt-1 flex-wrap">
-                <div className="flex items-center gap-1">Provider: 
-                  <select 
-                    value={k.provider || ''} 
+                <div className="flex items-center gap-1">Provider:
+                  <select
+                    value={k.provider || ''}
                     onChange={(e) => updateKeyProvider(k.id, e.target.value)}
                     className="border border-gray-200 px-1 py-0.5 rounded text-xs bg-gray-50 outline-none focus:border-blue-300"
                   >
@@ -301,6 +334,16 @@ export default function TenantDashboard({
                     <option value="evolink">Evolink</option>
                     <option value="ark">Ark</option>
                     <option value="auto">Auto</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-1">video_url:
+                  <select
+                    value={k.returnCdnVideoUrl === false ? 'raw' : 'cdn'}
+                    onChange={(e) => updateKeyReturnCdn(k.id, e.target.value === 'cdn')}
+                    className="border border-gray-200 px-1 py-0.5 rounded text-xs bg-gray-50 outline-none focus:border-blue-300"
+                  >
+                    <option value="cdn">CDN</option>
+                    <option value="raw">原始</option>
                   </select>
                 </div>
                 <span>配额: {k.quotaLimit !== null && k.quotaLimit !== undefined

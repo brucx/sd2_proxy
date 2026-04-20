@@ -11,8 +11,13 @@ export function buildPublicVideoUrl(taskId: string): string | undefined {
 // Mutate an Ark-shape response so content.video_url points at our /v endpoint
 // instead of the raw upstream signed URL. No-op when the task isn't succeeded,
 // when there's no video_url, or when PUBLIC_BASE_URL is unset.
+// Pass returnCdnUrl=false to opt out (leave the upstream signed URL as-is).
 // last_frame_url is left alone — those are separate assets not served by /v.
-export function rewriteArkVideoUrl(response: ArkTaskResponse): ArkTaskResponse {
+export function rewriteArkVideoUrl(
+  response: ArkTaskResponse,
+  returnCdnUrl: boolean = true,
+): ArkTaskResponse {
+  if (!returnCdnUrl) return response;
   if (!config.PUBLIC_BASE_URL) return response;
   if (response.status !== 'succeeded') return response;
   if (!response.content?.video_url) return response;

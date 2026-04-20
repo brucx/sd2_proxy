@@ -24,6 +24,9 @@ export const keys = pgTable('keys', {
   quotaUsed: numeric('quota_used', { precision: 20, scale: 4 }).notNull().default('0'),
   concurrencyLimit: integer('concurrency_limit'),  // null = 不限制（跟随用户级）
   provider: varchar('provider', { length: 50 }),  // null = 跟随用户级 users.provider
+  // 控制响应中 content.video_url 返回形式：true → 我们的 /v CDN 链接（默认，兼容历史行为）；
+  // false → 上游原始签名链接（供希望自行托管/分发的客户端使用）。
+  returnCdnVideoUrl: boolean('return_cdn_video_url').notNull().default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => [
   index('keys_user_id_idx').on(table.userId),

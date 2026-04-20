@@ -398,8 +398,9 @@ export const getResultHandler = async (c: any) => {
     const rawUpstreamVideoUrl: string | undefined = publicResponse.content?.video_url;
     // Hide the upstream signed URL from the client — every succeeded poll
     // returns a /v/{task_id}.mp4 self-URL regardless of whether this is the
-    // first terminal observation or a later re-poll.
-    rewriteArkVideoUrl(publicResponse);
+    // first terminal observation or a later re-poll. Respects the per-key
+    // opt-out (returnCdnVideoUrl=false → surface the upstream signed URL).
+    rewriteArkVideoUrl(publicResponse, keyRecord.returnCdnVideoUrl !== false);
 
     // Ark-equivalent CNY-per-million-token rate. Exposed uniformly on every
     // response (running, terminal, error-free) so clients can previsualize
