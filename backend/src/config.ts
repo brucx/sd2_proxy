@@ -47,6 +47,8 @@ export const config = {
     : {
         'doubao-seedance-2.0-fast': 'ep-20260307130821-xw5wf',
         'doubao-seedance-2.0-fast-260128': 'ep-20260307130821-xw5wf',
+        'doubao-seedance-2-0-fast': 'ep-20260307130821-xw5wf',
+        'doubao-seedance-2-0-fast-260128': 'ep-20260307130821-xw5wf',
         'doubao-seedance-2-0': 'ep-20260307130721-bx7tv',
         'doubao-seedance-2-0-260128': 'ep-20260307130721-bx7tv',
       } as Record<string, string>,
@@ -72,6 +74,8 @@ export const config = {
     : {
         'doubao-seedance-2.0-fast': 'seedance-2.0-fast',
         'doubao-seedance-2.0-fast-260128': 'seedance-2.0-fast',
+        'doubao-seedance-2-0-fast': 'seedance-2.0-fast',
+        'doubao-seedance-2-0-fast-260128': 'seedance-2.0-fast',
         'doubao-seedance-2-0': 'seedance-2.0',
         'doubao-seedance-2-0-260128': 'seedance-2.0',
       } as Record<string, string>,
@@ -114,6 +118,8 @@ export const config = {
     : {
         'doubao-seedance-2.0-fast': 'doubao-seedance-2-0-fast-260128',
         'doubao-seedance-2.0-fast-260128': 'doubao-seedance-2-0-fast-260128',
+        'doubao-seedance-2-0-fast': 'doubao-seedance-2-0-fast-260128',
+        'doubao-seedance-2-0-fast-260128': 'doubao-seedance-2-0-fast-260128',
         'doubao-seedance-2-0': 'doubao-seedance-2-0-260128',
         'doubao-seedance-2-0-260128': 'doubao-seedance-2-0-260128',
       } as Record<string, string>,
