@@ -45,6 +45,10 @@ export const config = {
   MODEL_MAPPING: process.env.MODEL_MAPPING 
     ? JSON.parse(process.env.MODEL_MAPPING) 
     : {
+        'doubao-seedance-2-5': 'ep-20260806152205-qvvvg',
+        'doubao-seedance-2-5-260628': 'ep-20260806152205-qvvvg',
+        'doubao-seedance-2.5': 'ep-20260806152205-qvvvg',
+        'doubao-seedance-2.5-260628': 'ep-20260806152205-qvvvg',
         'doubao-seedance-2.0-fast': 'ep-20260307130821-xw5wf',
         'doubao-seedance-2.0-fast-260128': 'ep-20260307130821-xw5wf',
         'doubao-seedance-2-0-fast': 'ep-20260307130821-xw5wf',
@@ -116,6 +120,10 @@ export const config = {
   ARK_MODEL_MAPPING: process.env.ARK_MODEL_MAPPING
     ? JSON.parse(process.env.ARK_MODEL_MAPPING)
     : {
+        'doubao-seedance-2-5': 'doubao-seedance-2-5-260628',
+        'doubao-seedance-2-5-260628': 'doubao-seedance-2-5-260628',
+        'doubao-seedance-2.5': 'doubao-seedance-2-5-260628',
+        'doubao-seedance-2.5-260628': 'doubao-seedance-2-5-260628',
         'doubao-seedance-2.0-fast': 'doubao-seedance-2-0-fast-260128',
         'doubao-seedance-2.0-fast-260128': 'doubao-seedance-2-0-fast-260128',
         'doubao-seedance-2-0-fast': 'doubao-seedance-2-0-fast-260128',
@@ -124,8 +132,15 @@ export const config = {
         'doubao-seedance-2-0-260128': 'doubao-seedance-2-0-260128',
       } as Record<string, string>,
   // Ark pricing: CNY per 1,000,000 tokens — see docs/ark/pricing.md
-  // Keyed by "<model>:<hasVideo>" where model is normalized to 2.0 vs 2.0-fast.
+  // Keyed by "<model>:<hasVideo>:<quality>".
+  // 2.5 rates: https://docs.volcengine.com/docs/ark/model-pricing?lang=zh (2026-11-09).
   ARK_PRICE_PER_MILLION: {
+    '2.5:false:480p': 70,
+    '2.5:false:720p': 70,
+    '2.5:false:1080p': 77,
+    '2.5:true:480p': 42,
+    '2.5:true:720p': 42,
+    '2.5:true:1080p': 46,
     '2.0:false:480p': 46,
     '2.0:false:720p': 46,
     '2.0:false:1080p': 51,

@@ -108,6 +108,7 @@ export const endpoints: ApiEndpoint[] = [
     auth: 'Bearer API Key',
     notes: [
       '这是推荐的任务创建入口。',
+      'Seedance 2.5 可使用 `doubao-seedance-2-5-260628`，支持 Meitu / Ark 渠道；时长为 4–30 秒或 -1（智能选择）。',
       '`seedance-2.0-fast` 系列请求 `1080p` 会在入站校验阶段被拒绝，返回 400。',
       '若请求体里引用了 `asset://<ASSET_ID>`，系统会自动解析并使用对应素材完成任务。',
       '响应中的 `id` 格式类似 `cgt-20260420123045-ab12c`。',

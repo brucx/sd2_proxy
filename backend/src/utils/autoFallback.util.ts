@@ -70,6 +70,9 @@ export async function attemptModerationFallback(input: FallbackInput): Promise<F
     return { triggered: false };
   }
 
+  // Only fall back when the target has an explicitly configured model.
+  if (!config.EVOLINK_MODEL_BASE[userModel]) return { triggered: false };
+
   let createResult;
   try {
     createResult = await evolinkProvider.createTask(parsedRequestBody, userModel);

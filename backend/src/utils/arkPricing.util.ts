@@ -5,12 +5,13 @@
 
 import { config } from '../config.js';
 
-export type ModelFamily = '2.0' | '2.0-fast';
+export type ModelFamily = '2.0' | '2.0-fast' | '2.5';
 export type Quality = '480p' | '720p' | '1080p';
 
 export function normalizeModelFamily(userModel?: string): ModelFamily | null {
   if (!userModel) return null;
   const s = userModel.toLowerCase();
+  if (s.includes('2-5') || s.includes('2.5')) return '2.5';
   if (s.includes('fast')) return '2.0-fast';
   if (s.includes('2-0') || s.includes('2.0')) return '2.0';
   return null;

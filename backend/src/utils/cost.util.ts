@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { normalizeModelFamily } from './arkPricing.util.js';
 
 // Detect if request body contains video input.
 // Accepts both Ark-shape (`content[]` with video_url items) and flat-array
@@ -25,7 +26,7 @@ export function calculateArkCost(
   quality: string,
   model: string,
 ): string {
-  const variant = /fast/i.test(model) ? '2.0-fast' : '2.0';
+  const variant = normalizeModelFamily(model) ?? '2.0';
   const q = ['480p', '720p', '1080p'].includes(quality) ? quality : '720p';
   const key = `${variant}:${hasVideo}:${q}`;
   const table = config.ARK_PRICE_PER_MILLION;

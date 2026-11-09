@@ -40,6 +40,8 @@ const HelpText = ({ children }: { children: React.ReactNode }) => (
 function Playground() {
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState('doubao-seedance-2-0-260128');
+  const isSeedance25 = model === 'doubao-seedance-2-5-260628';
+  const maxDuration = isSeedance25 ? 30 : 15;
   const [prompt, setPrompt] = useState('');
   const [refImages, setRefImages] = useState<RefItem[]>([]);
   const [refVideos, setRefVideos] = useState<RefItem[]>([]);
@@ -578,6 +580,7 @@ function Playground() {
 
           <div>
             <h3 className="font-semibold text-gray-800 mb-1">content（必选）</h3>
+            <p className="text-xs text-gray-500">以下素材限制表适用于 2.0 系列；2.5 支持最多 30 张参考图、10 个参考视频（总时长 ≤ 30s），以及单独输入音频。</p>
             <p className="text-gray-500 mb-2">输入给模型的信息，支持以下组合：</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-xs">
               {['文本', '文本（可选）+ 图片', '文本（可选）+ 视频', '文本（可选）+ 图片 + 音频', '文本（可选）+ 图片 + 视频', '文本（可选）+ 视频 + 音频', '文本（可选）+ 图片 + 视频 + 音频'].map(c => (
@@ -662,7 +665,7 @@ function Playground() {
                   <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">generate_audio</td><td className="px-2 py-1.5 border border-gray-200">boolean</td><td className="px-2 py-1.5 border border-gray-200">true</td><td className="px-2 py-1.5 border border-gray-200">控制视频是否包含同步声音（人声/音效/BGM）</td></tr>
                   <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">resolution</td><td className="px-2 py-1.5 border border-gray-200">string</td><td className="px-2 py-1.5 border border-gray-200">720p</td><td className="px-2 py-1.5 border border-gray-200">视频分辨率，支持 480p / 720p / 1080p（1080p 仅标准模型支持）</td></tr>
                   <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">ratio</td><td className="px-2 py-1.5 border border-gray-200">string</td><td className="px-2 py-1.5 border border-gray-200">adaptive</td><td className="px-2 py-1.5 border border-gray-200">宽高比：16:9, 4:3, 1:1, 3:4, 9:16, 21:9, adaptive</td></tr>
-                  <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">duration</td><td className="px-2 py-1.5 border border-gray-200">integer</td><td className="px-2 py-1.5 border border-gray-200">5</td><td className="px-2 py-1.5 border border-gray-200">视频时长 [4,15] 秒，或 -1（智能时长，由模型自主选择）</td></tr>
+                  <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">duration</td><td className="px-2 py-1.5 border border-gray-200">integer</td><td className="px-2 py-1.5 border border-gray-200">5</td><td className="px-2 py-1.5 border border-gray-200">视频时长：2.5 为 [4,30] 秒，2.0 系列为 [4,15] 秒，或 -1（智能时长，由模型自主选择）</td></tr>
                   <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">watermark</td><td className="px-2 py-1.5 border border-gray-200">boolean</td><td className="px-2 py-1.5 border border-gray-200">-</td><td className="px-2 py-1.5 border border-gray-200">是否添加水印</td></tr>
                   <tr><td className="px-2 py-1.5 border border-gray-200 font-mono">tools</td><td className="px-2 py-1.5 border border-gray-200">object[]</td><td className="px-2 py-1.5 border border-gray-200">-</td><td className="px-2 py-1.5 border border-gray-200">web_search 联网搜索工具，提升时效性</td></tr>
                 </tbody>
@@ -1143,9 +1146,14 @@ function Playground() {
               <label className="block text-sm font-medium mb-1 text-gray-700">🤖 Model</label>
               <select
                 value={model}
-                onChange={(e) => setModel(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setModel(next);
+                  setDuration(current => current === -1 ? -1 : Math.min(current, next === 'doubao-seedance-2-5-260628' ? 30 : 15));
+                }}
                 className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all bg-white"
               >
+                <option value="doubao-seedance-2-5-260628">doubao-seedance-2-5-260628 (2.5 · Meitu / Ark)</option>
                 <option value="doubao-seedance-2-0-260128">doubao-seedance-2-0-260128 (Standard)</option>
                 <option value="doubao-seedance-2-0-fast-260128">doubao-seedance-2-0-fast-260128 (Fast)</option>
               </select>
@@ -1185,9 +1193,9 @@ function Playground() {
               <input
                 type="number"
                 value={duration}
-                onChange={(e) => { const v = parseInt(e.target.value); setDuration(isNaN(v) ? 5 : (v === -1 ? -1 : Math.min(15, Math.max(4, v)))); }}
+                onChange={(e) => { const v = parseInt(e.target.value); setDuration(isNaN(v) ? 5 : (v === -1 ? -1 : Math.min(maxDuration, Math.max(4, v)))); }}
                 min={-1}
-                max={15}
+                max={maxDuration}
                 className="w-20 px-2 py-1.5 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all"
               />
               <span className="text-xs text-gray-400">{duration === -1 ? '智能' : '秒'}</span>
@@ -1265,7 +1273,7 @@ function Playground() {
               </label>
               <button type="button" onClick={addVideo} className="text-xs px-2.5 py-1 rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors font-medium">+ Add</button>
             </div>
-            <HelpText>仅 Seedance 2.0 支持。格式 mp4/mov，480p/720p，[2,15]s，最多 3 个总时长 ≤ 15s，单个 ≤ 50MB，FPS [24,60]。</HelpText>
+            <HelpText>{isSeedance25 ? 'Seedance 2.5：最多 10 个参考视频，总时长 ≤ 30s；编辑视频时请将 Duration 设为 -1。' : 'Seedance 2.0：格式 mp4/mov，480p/720p，[2,15]s，最多 3 个总时长 ≤ 15s，单个 ≤ 50MB，FPS [24,60]。'}</HelpText>
             {refVideos.map(item => (
               <div key={item.id} className="flex flex-col sm:flex-row gap-2">
                 <input
@@ -1292,7 +1300,7 @@ function Playground() {
               </label>
               <button type="button" onClick={addAudio} className="text-xs px-2.5 py-1 rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors font-medium">+ Add</button>
             </div>
-            <HelpText>仅 Seedance 2.0 支持。格式 wav/mp3，[2,15]s，最多 3 段总时长 ≤ 15s，单个 ≤ 15MB。不可单独输入，需至少包含 1 个参考视频或图片。</HelpText>
+            <HelpText>{isSeedance25 ? 'Seedance 2.5 支持单独输入参考音频，也可搭配图片或视频。' : 'Seedance 2.0：格式 wav/mp3，[2,15]s，最多 3 段总时长 ≤ 15s，单个 ≤ 15MB。不可单独输入，需至少包含 1 个参考视频或图片。'}</HelpText>
             {refAudios.map(item => (
               <div key={item.id} className="flex flex-col sm:flex-row gap-2">
                 <input

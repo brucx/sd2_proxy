@@ -1,6 +1,6 @@
-# API Proxy for Seedance 2.0 视频生成模型
+# API Proxy for Seedance 2.0 / 2.5 视频生成模型
 
-这是一个基于 Node.js 和 React 构建的 API 中转站项目，专门用于转发 Seedance 2.0 & 2.0 fast API 请求。项目实现了多租户管理、子 Key 分配、限流控制、后付费计费逻辑以及一个可视化的 API 调试面板（Playground）。
+这是一个基于 Node.js 和 React 构建的 API 中转站项目，用于转发 Seedance 2.0、2.0 fast 和 2.5 API 请求。项目实现了多租户管理、子 Key 分配、限流控制、后付费计费逻辑以及一个可视化的 API 调试面板（Playground）。
 
 ## 功能特性 (Features)
 
@@ -16,8 +16,32 @@
 *   **统计面板 (Dashboard)**:
     *   Admin 面板：查看全局的租户用量统计和管理所有用户。
     *   Tenant 面板：生成新的 API Key 并查看当前 Key 的使用详情和消耗 Tokens 数。
-*   **API Playground**: 租户可以直接在界面上填入自己的子 Key 和 Prompt 来测试生成视频任务并轮询状态。支持 480p/720p/1080p 分辨率、[4,15]秒或-1智能时长、联网搜索等参数。
+*   **API Playground**: 租户可以直接在界面上填入自己的子 Key 和 Prompt 来测试生成视频任务并轮询状态。支持 480p/720p/1080p 分辨率、2.0 系列 [4,15] 秒、2.5 [4,30] 秒或 -1 智能时长、联网搜索等参数。
 *   **素材管理面板**: 管理员可在 Dashboard 中管理真人素材（AIGC），包括提交新素材、查询素材状态、浏览公共虚拟人像库。
+
+## Seedance 2.5 接入
+
+客户端推荐使用 `model: "doubao-seedance-2-5-260628"`，也支持别名 `doubao-seedance-2-5`、`doubao-seedance-2.5`、`doubao-seedance-2.5-260628`。
+
+| 渠道 | 上游模型 / Endpoint | 配置 |
+| --- | --- | --- |
+| Meitu | `ep-20260806152205-qvvvg` | `UPSTREAM_URL`、`MEITU_API_KEY` |
+| Ark | `doubao-seedance-2-5-260628` | `ARK_API_KEY`；`ARK_URL` 默认 `https://ark.cn-beijing.volces.com` |
+
+在用户或子 Key 设置中选择 `meitu` / `ark`。Ark 账号需开通对应模型服务。`auto` 仍先走 Meitu；Evolink 未配置该模型时不会回退，不会降级到 2.0。Evolink / Aivideo 没有新增默认的 2.5 映射。
+
+**已有部署注意**：环境变量 `MODEL_MAPPING`、`ARK_MODEL_MAPPING` 会整体覆盖默认映射。如果设置过，请在现有 JSON 中补充 2.5 别名映射，保留原有 2.0 条目，然后重新构建并重启。
+
+2.5 使用 `usage.completion_tokens` 计费，Meitu 沿用本项目的 Ark 同价规则：
+
+| 输出分辨率 | 无视频输入（元/百万 tokens） | 有视频输入（元/百万 tokens） |
+| --- | ---: | ---: |
+| 480p / 720p | 70 | 42 |
+| 1080p | 77 | 46 |
+
+基础请求仍使用 `/api/v3/contents/generations/tasks`，无需变更客户端协议。Meitu / Ark 会透传请求参数，例如 `omni_reference_task_type`。2.5 视频编辑需 `duration: -1`，视频延长需 `ratio: "adaptive"`；具体参数组合由上游校验。Playground 提供基础生成参数，高级参数可通过 API 提交。
+
+核对日期：2026-11-09。来源：[官方模型说明](https://docs.volcengine.com/docs/ark/seedance-2-5?lang=zh)、[创建任务参数](https://docs.volcengine.com/docs/ark/create-video-generation-task-api?lang=zh)、[官方模型价格](https://docs.volcengine.com/docs/ark/model-pricing?lang=zh)。Meitu endpoint 由项目维护者提供。
 
 ## 技术栈 (Tech Stack)
 
